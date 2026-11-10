@@ -1,0 +1,21 @@
+{
+  "name": "actiondoc-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node dev.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "npm run build && node tests/browser.mjs"
+  },
+  "dependencies": {
+    "cfb": "1.2.2",
+    "pako": "2.1.0",
+    "pdfjs-dist": "4.10.38"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "playwright": "1.56.1"
+  }
+}

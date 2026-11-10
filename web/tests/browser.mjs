@@ -1,0 +1,46 @@
+import { chromium } from 'playwright';
+import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import { hwpFixture, pdfFixture } from './fixtures.mjs';
+const server = spawn(process.execPath, ['dev.mjs'], { env: { ...process.env, PORT: '4184' }, stdio: 'pipe' });
+let browser;
+try {
+  await new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('Server start timeout')), 10000); server.once('error', reject); server.stdout.once('data', () => { clearTimeout(timer); resolve(); }); server.once('exit', code => reject(new Error('Server exited: ' + code))); });
+  browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1100 }, acceptDownloads: true });
+  const errors = [], external = [], postRequests = [];
+  page.on('pageerror', e => errors.push(e.message));
+  page.on('request', req => { if (!req.url().startsWith('http://127.0.0.1:4184/') && !req.url().startsWith('blob:')) external.push(req.url()); if (req.method() !== 'GET') postRequests.push(req.url()); });
+  await page.goto('http://127.0.0.1:4184/');
+  await page.getByRole('tab', { name: '텍스트 붙여넣기' }).click();
+  await page.getByRole('button', { name: '샘플로 체험하기' }).click();
+  await page.selectOption('#purpose', 'SUPPORT'); await page.click('#summarize');
+  await page.waitForSelector('#results:not([hidden])');
+  assert.match(await page.locator('#sections').innerText(), /500,000원/);
+  assert.match(await page.locator('#sections').innerText(), /다른 지원금을 받은 기업은 제외/);
+  const downloadEvent = page.waitForEvent('download'); await page.click('#download'); const download = await downloadEvent;
+  assert.match(await readFile(await download.path(), 'utf8'), /500,000원/);
+  await page.screenshot({ path: '/private/tmp/actiondoc-web-desktop.png', fullPage: true });
+  // User supplied markup stays text and never runs or contacts an external host.
+  await page.fill('#document-text', '요금: 33,000원입니다.\n<script>window.attacked=true</script>\n다만, 신규 신청자는 제외합니다.'); await page.click('#summarize');
+  assert.equal(await page.evaluate(() => window.attacked), undefined);
+  await page.getByRole('tab', { name: '파일 선택' }).click();
+  await page.setInputFiles('#file', { name: '안내.html', mimeType: 'text/html', buffer: Buffer.from('<p>지원 대상: 지역기업</p><script>window.attacked=true</script><img src="https://invalid.example/tracker"><p>지원 금액: 12,000원</p>') });
+  await page.click('#summarize'); await page.waitForSelector('#results:not([hidden])');
+  assert.match(await page.locator('#source').evaluate(n => n.parentElement.textContent), /본문 전체/);
+  assert.equal(await page.evaluate(() => window.attacked), undefined);
+  await page.setInputFiles('#file', { name: '공문.hwp', mimeType: 'application/octet-stream', buffer: Buffer.from(hwpFixture()) }); await page.click('#summarize');
+  await page.waitForSelector('#results:not([hidden])'); assert.match(await page.locator('#sections').innerText(), /지역 중소기업/);
+  await page.setInputFiles('#file', { name: '50pages.pdf', mimeType: 'application/pdf', buffer: pdfFixture(50) }); await page.click('#summarize');
+  await page.waitForSelector('#results:not([hidden])'); assert.match(await page.locator('#result-meta').innerText(), /50쪽/);
+  await page.setInputFiles('#file', { name: '51pages.pdf', mimeType: 'application/pdf', buffer: pdfFixture(51) }); await page.click('#summarize');
+  await page.waitForSelector('#error:not([hidden])'); assert.match(await page.locator('#error').innerText(), /51쪽/); assert.equal(await page.locator('#results').isVisible(), false);
+  await page.setInputFiles('#file', { name: 'mixed.pdf', mimeType: 'application/pdf', buffer: pdfFixture(2, [2]) }); await page.click('#summarize');
+  await page.waitForSelector('#results:not([hidden])'); assert.match(await page.locator('#warnings').innerText(), /읽지 못한 쪽: 2/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: '/private/tmp/actiondoc-web-mobile.png', fullPage: true });
+  assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(postRequests, []);
+  console.log('PASS: text/HTML/HWP/PDF, 50/51 pages, mixed PDF warning, evidence export, no script execution or external requests, mobile layout');
+} finally { if (browser) await browser.close(); server.kill(); }

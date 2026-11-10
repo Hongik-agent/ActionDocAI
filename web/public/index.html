@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="로그인 없이 내 브라우저에서 공문과 안내문의 주요 내용·기한·금액을 원문과 함께 정리하세요.">
+<title>ActionDoc · 문서에서 다음 행동까지</title>
+<link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="/" aria-label="ActionDoc 홈"><span class="brand-icon">a↗</span>ActionDoc<span class="beta">WEB BETA</span></a><span class="privacy"><span class="dot"></span>문서는 내 브라우저 안에</span></header>
+<main>
+<section class="hero"><p class="eyebrow">FROM DOCUMENT TO ACTION</p><h1>길고 복잡한 안내문,<br><span>필요한 내용부터.</span></h1><p class="intro">공문·지원사업·계약 안내의 주요 내용을 목적별로 정리하세요.<br>원문 근거를 함께 확인할 수 있습니다.</p><div class="badges"><span>가입 없이 무료</span><span>문서 업로드 없음</span><span>AI 사용료 없음</span></div></section>
+<div class="workspace">
+<section class="panel input-panel" aria-labelledby="input-heading"><div class="panel-heading"><span class="step">01</span><h2 id="input-heading">문서 준비하기</h2></div>
+<div class="tabs" role="tablist" aria-label="문서 입력 방식"><button id="file-tab" role="tab" aria-selected="true" aria-controls="file-panel">파일 선택</button><button id="text-tab" role="tab" aria-selected="false" aria-controls="text-panel">텍스트 붙여넣기</button></div>
+<div id="file-panel" role="tabpanel" aria-labelledby="file-tab"><label class="dropzone" id="dropzone" for="file"><span class="upload-symbol">↥</span><strong id="file-label">파일을 선택하거나 여기에 놓으세요</strong><span>PDF · HWP 5 · HTML · TXT · MD</span><small>최대 50MB · PDF 최대 50쪽</small></label><input id="file" type="file" accept=".pdf,.hwp,.html,.htm,.txt,.md" class="file-picker"><button id="remove-file" class="text-button" hidden>선택한 파일 지우기</button><p class="field-help">웹 버전은 이미지·스캔 OCR 및 HWPX를 지원하지 않습니다.</p></div>
+<div id="text-panel" role="tabpanel" aria-labelledby="text-tab" hidden><label class="sr-only" for="document-text">안내문 본문</label><textarea id="document-text" maxlength="160000" rows="9" placeholder="공문·문자·이메일의 내용을 붙여넣으세요. 조건·기한·예외를 함께 넣어 주세요."></textarea><div class="text-meta"><button class="text-button" id="sample">샘플로 체험하기 ↗</button><span id="char-count">0 / 160,000자</span></div></div>
+<label class="field-label" for="purpose">어떤 내용을 확인할까요?</label><select id="purpose"><option value="GENERAL">전체 정리</option><option value="BUSINESS">공문·업무 요청</option><option value="SUPPORT">지원사업·모집 공고</option><option value="CONTRACT">요금·계약 안내</option></select><p id="purpose-hint" class="field-help">주요 내용과 기한·금액·예외를 함께 확인합니다.</p>
+<button id="summarize" class="primary">문서 정리하기 <span>→</span></button><p id="progress" class="progress" role="status" aria-live="polite"></p><p id="error" class="error" role="alert" hidden></p>
+</section>
+<aside class="guide"><p class="eyebrow">CLEAR & TRACEABLE</p><h2>중요한 판단에는,<br>확인 가능한 근거를.</h2><ol><li><span>01</span><div><strong>목적에 맞게 묶기</strong><p>제출 자료·신청 조건·요금 등 필요한 항목으로 원문을 찾습니다.</p></div></li><li><span>02</span><div><strong>금액·기한·예외 확인</strong><p>원문의 표현을 유지하고, 해당 문단과 쪽 번호를 함께 보여줍니다.</p></div></li><li><span>03</span><div><strong>결과를 내 문서로</strong><p>정리 결과와 근거를 마크다운 파일로 저장할 수 있습니다.</p></div></li></ol><div class="scope"><strong>무료 기본 정리란?</strong><p>원문 문장을 찾아 항목별로 발췌하는 기능입니다. 문맥을 새로 쓰는 AI 요약이나 개인별 자격 판단은 제공하지 않습니다.</p></div></aside>
+</div>
+<section id="results" class="results" tabindex="-1" hidden><div class="result-heading"><div><p class="eyebrow">YOUR DOCUMENT, ORGANIZED</p><h2>필요한 내용, 원문과 함께.</h2><p id="result-meta"></p></div><button id="download" class="secondary">정리 결과 저장 ↓</button></div><div id="warnings" class="warnings"></div><div id="sections" class="section-grid"></div><details class="source-panel"><summary>추출한 본문 전체 보기</summary><div id="source"></div></details><p class="result-note">검색된 항목이 없다고 해당 조건이 없는 것은 아닙니다. 금액·기한·표·예외는 원본 문서와 함께 확인해 주세요.</p></section>
+</main><footer><span>ActionDoc · 무료 웹 기본판</span><span>문서 내용과 결과는 서버에 저장하지 않습니다. 페이지를 새로고침하면 결과가 사라집니다.</span></footer>
+</body></html>

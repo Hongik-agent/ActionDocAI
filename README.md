@@ -1,5 +1,7 @@
 # ActionDoc AI — 현재 개발본 0.3.0
 
+**웹 기본판도 추가했습니다.** 로그인 없이 PDF·HWP·HTML·TXT·MD를 브라우저에서 정리합니다. 실행 및 Vercel 배포 방법은 [web/README.md](web/README.md)를 참고하세요. Vercel 프로젝트의 Root Directory는 `web`입니다. 웹판에는 OCR과 AI 문맥 요약이 아직 포함되지 않습니다.
+
 PDF·HWP·HTML·TXT·MD와 붙여넣은 안내문을 읽고, 조건·기간·조치·원문 근거를 확인하는 Mac 앱입니다. 이 폴더가 최종 프로젝트입니다. 실행은 바로 아래 **ActionDoc AI.app**을 더블클릭하고, 소스 수정은 **desktop/Sources**와 **src/main/java**에서 진행합니다.
 
 문서는 파일당 최대 **50MB**까지 입력할 수 있습니다. 파일 용량과 별개로 추출 본문은 160,000자, PDF는 50페이지까지 처리합니다.
