@@ -38,6 +38,23 @@ try {
   await page.waitForSelector('#error:not([hidden])'); assert.match(await page.locator('#error').innerText(), /51쪽/); assert.equal(await page.locator('#results').isVisible(), false);
   await page.setInputFiles('#file', { name: 'mixed.pdf', mimeType: 'application/pdf', buffer: pdfFixture(2, [2]) }); await page.click('#summarize');
   await page.waitForSelector('#results:not([hidden])'); assert.match(await page.locator('#warnings').innerText(), /읽지 못한 쪽: 2/);
+  const sheet = await browser.newPage();
+  await sheet.setContent('<canvas width="1000" height="200"></canvas>');
+  await sheet.evaluate(() => {
+    const c=document.querySelector('canvas').getContext('2d');
+    c.fillStyle='white';c.fillRect(0,0,1000,200);
+    c.fillStyle='black';c.font='42px sans-serif';
+    c.fillText('지원 금액 500,000원',40,70);
+    c.fillText('ACTION NOTICE 2027',40,150);
+  });
+  const scan = await sheet.pdf(); await sheet.close();
+  await page.setInputFiles('#file',{name:'scan.pdf',mimeType:'application/pdf',buffer:scan});
+  await page.click('#summarize');
+  await page.waitForSelector('#results:not([hidden])',{timeout:60000});
+  assert.match(await page.locator('#warnings').innerText(),/OCR 인식 쪽: 1/);
+  await page.locator('.source-panel summary').click();
+  await page.waitForSelector('#source .evidence');
+  assert.match(await page.locator('#source').innerText(),/500,000/);
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: '/private/tmp/actiondoc-web-mobile.png', fullPage: true });

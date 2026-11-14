@@ -7,3 +7,9 @@ await cp('node_modules/pdfjs-dist/build/pdf.worker.min.mjs', 'dist/pdf.worker.mj
 await cp('node_modules/pdfjs-dist/LICENSE', 'dist/PDFJS-LICENSE.txt');
 await cp('node_modules/cfb/LICENSE', 'dist/CFB-LICENSE.txt');
 await cp('node_modules/pako/LICENSE', 'dist/PAKO-LICENSE.txt');
+await mkdir('dist/ocr');
+await cp('node_modules/tesseract.js/dist/worker.min.js','dist/ocr/worker.min.js');
+for (const name of ['tesseract-core-lstm.wasm.js','tesseract-core-simd-lstm.wasm.js','LICENSE'])
+  await cp('node_modules/tesseract.js-core/'+name,'dist/ocr/'+name);
+for (const lang of ['kor','eng'])
+  await cp('node_modules/@tesseract.js-data/'+lang+'/4.0.0_best_int/'+lang+'.traineddata.gz','dist/ocr/'+lang+'.traineddata.gz');

@@ -36,7 +36,7 @@ export function blocksFromText(text, page = 0, offset = 0) {
 }
 export function validateDocument(document) {
   const size = document.blocks.reduce((sum, b) => sum + b.text.length, 0);
-  if (!size) throw new Error('읽을 수 있는 본문이 없습니다. 이미지·스캔 문서는 Mac 앱을 사용하거나 텍스트를 붙여넣어 주세요.');
+  if (!size) throw new Error('읽을 수 있는 본문이 없습니다. 원본 상태를 확인하거나 텍스트를 붙여넣어 주세요.');
   if (size > LIMITS.characters) throw new Error('본문은 160,000자까지 지원합니다. 문서를 나누어 입력해 주세요.');
   return { ...document, characters: size };
 }
