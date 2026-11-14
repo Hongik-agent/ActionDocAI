@@ -1,3 +1,4 @@
+export const geminiKey = () => process.env.GEMINI_API_KEY || process.env.actionDoc;
 export const defaultGeminiModel = 'gemini-3.1-flash-lite';
 
 export async function askGemini(model, instructions, input, schema, max) {
@@ -6,7 +7,7 @@ export async function askGemini(model, instructions, input, schema, max) {
     method: 'POST',
     redirect: 'error',
     signal: AbortSignal.timeout(45000),
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey() },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: instructions }] },
       contents: [{ role: 'user', parts: [{ text: JSON.stringify(input) }] }],

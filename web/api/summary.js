@@ -1,4 +1,4 @@
-import {defaultGeminiModel} from '../server/gemini.js';
+import {defaultGeminiModel, geminiKey} from '../server/gemini.js';
 import {createHash} from 'node:crypto';
 import {createClient} from '@supabase/supabase-js';
 import {verifiedSummary,checkEvidence} from '../server/verify.js';
@@ -18,7 +18,7 @@ export default async function summary(req,res) {
     const db=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
     const {data:{user},error}=await db.auth.getUser(token);
     if(error||!user) return res.status(401).json({status:'login'});
-    const gemini = Boolean(process.env.GEMINI_API_KEY);
+    const gemini = Boolean(geminiKey());
     const model = gemini ? process.env.GEMINI_MODEL || defaultGeminiModel : process.env.OPENAI_MODEL || 'gpt-4.1-mini';
     if(!gemini && !process.env.OPENAI_API_KEY) throw Error('configuration');
     const source=blocks.map(({text,page})=>({text,page}));
