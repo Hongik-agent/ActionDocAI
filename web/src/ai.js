@@ -22,6 +22,7 @@ export async function initializeAi() {
     const config=await response.json(); if(!config.enabled) return;
     client=createClient(config.url,config.publicKey,{auth:{flowType:'pkce'}});
     client.auth.onAuthStateChange((_event,session)=>{
+      $('ai-panel').hidden=false;
       $('ai-login').hidden=!!session; $('ai-controls').hidden=!session; $('ai-logout').hidden=!session;
       $('ai-available').textContent=session?'문서를 먼저 정리한 뒤 AI 요약을 실행하세요.':'무료 AI 요약은 GitHub 로그인 후 사용할 수 있습니다. 로그인 후 문서를 선택해 주세요.';
     });
