@@ -55,8 +55,8 @@ npm run test:browser
 
 스캔 PDF는 브라우저의 Tesseract 한국어·영어 모델로 읽습니다. 모델 파일은 배포 사이트에서 받아오며 OCR 이미지는 브라우저에서 처리합니다. OCR 결과는 인식 쪽을 표시합니다.
 
-Vercel Root Directory는 `web`입니다. AI를 활성화하려면 Supabase 프로젝트에서 GitHub OAuth 공급자를 설정하고 사이트 URL을 배포 도메인으로 등록한 뒤, SQL Editor에서 [schema.sql](server/schema.sql)을 실행하세요. Vercel 서버 환경 변수에 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`를 등록하고 다시 배포합니다. 키 없이도 OCR과 기본 정리를 사용할 수 있습니다.
+Vercel Root Directory는 `web`입니다. AI를 활성화하려면 Supabase 프로젝트에서 GitHub OAuth 공급자를 설정하고 사이트 URL을 배포 도메인으로 등록한 뒤, SQL Editor에서 [schema.sql](server/schema.sql)을 실행하세요. Vercel 서버 환경 변수에 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`(또는 `OPENAI_API_KEY`)를 등록하고 다시 배포합니다. 키 없이도 OCR과 기본 정리를 사용할 수 있습니다.
 
-AI는 10쪽·10,000자까지 지원합니다. 기본 모델은 gpt-4.1-mini이며 OPENAI_MODEL로 변경합니다. USER_DAILY_LIMIT(기본 3), GLOBAL_DAILY_LIMIT(기본 30)은 한국 시간 기준 **분석 시도 횟수**입니다. 한 시도에서 요약 및 검증을 위해 최대 두 번 모델을 호출합니다. 실패한 시도도 운영비 보호를 위해 예약 횟수에 포함됩니다. 한도 초과·저장소 장애·검증 실패 시 기본 정리를 제공합니다.
+AI는 10쪽·10,000자까지 지원합니다. Gemini 키가 있으면 gemini-3.1-flash-lite를 사용하며 GEMINI_MODEL로 변경합니다. OpenAI는 OPENAI_MODEL로 설정합니다. Vercel에서 운영 키는 Production 환경의 Sensitive 변수로 저장하세요. USER_DAILY_LIMIT(기본 3), GLOBAL_DAILY_LIMIT(기본 30)은 한국 시간 기준 **분석 시도 횟수**입니다. 한 시도에서 요약 및 검증을 위해 최대 두 번 모델을 호출합니다. 실패한 시도도 운영비 보호를 위해 예약 횟수에 포함됩니다. 한도 초과·저장소 장애·검증 실패 시 기본 정리를 제공합니다.
 
-캐시는 계정·본문·쪽 위치·목적·모델·검증 버전에 따라 구분합니다. 7일이 지난 기록은 다음 예약 요청에서 정리하며, 유효한 캐시 조회는 한도 차감 없이 가능합니다. 운영자는 장기 미사용 시에도 물리적 삭제가 필요하면 만료 기록 삭제를 주기적으로 실행하세요. 서비스 역할 키와 OpenAI 키는 브라우저 설정이나 번들에 넣지 않습니다.
+캐시는 계정·본문·쪽 위치·목적·모델·검증 버전에 따라 구분합니다. 7일이 지난 기록은 다음 예약 요청에서 정리하며, 유효한 캐시 조회는 한도 차감 없이 가능합니다. 운영자는 장기 미사용 시에도 물리적 삭제가 필요하면 만료 기록 삭제를 주기적으로 실행하세요. 서비스 역할 키와 AI 공급자 키는 브라우저 설정이나 번들에 넣지 않습니다.

@@ -1,3 +1,4 @@
+import { askGemini } from './gemini.js';
 export function checkEvidence(items, blocks) {
   if (!Array.isArray(items) || !items.length || items.length>8) throw Error('items');
   for (const {statement,quote,index} of items) {
@@ -13,6 +14,7 @@ export function checkEvidence(items, blocks) {
 const object = properties => ({type:'object',properties,required:Object.keys(properties),additionalProperties:false});
 const string={type:'string'};
 async function ask(model,instructions,input,name,schema,max) {
+  if (process.env.GEMINI_API_KEY) return askGemini(model,instructions,input,schema,max);
   const response=await fetch('https://api.openai.com/v1/responses',{method:'POST',signal:AbortSignal.timeout(45000),
     headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
     body:JSON.stringify({model,store:false,instructions,input:JSON.stringify(input),max_output_tokens:max,

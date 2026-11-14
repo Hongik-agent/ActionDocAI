@@ -20,6 +20,8 @@ export async function initializeAi() {
     const response=await fetch('/api/config',{cache:'no-store'});
     if(!response.ok) return;
     const config=await response.json(); if(!config.enabled) return;
+    $('ai-provider').textContent=config.provider;
+    if(config.provider==='Google Gemini') $('ai-data-note').textContent='Google 무료 등급에서는 입력과 출력이 제품 개선에 쓰일 수 있습니다. 공개 문서로 이용해 주세요.';
     client=createClient(config.url,config.publicKey,{auth:{flowType:'pkce'}});
     client.auth.onAuthStateChange((_event,session)=>{
       $('ai-panel').hidden=false;
