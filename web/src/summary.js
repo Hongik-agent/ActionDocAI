@@ -40,16 +40,51 @@ export function validateDocument(document) {
   if (size > LIMITS.characters) throw new Error('본문은 160,000자까지 지원합니다. 문서를 나누어 입력해 주세요.');
   return { ...document, characters: size };
 }
+// A notice often puts the label on one PDF line and the answer on the next.
+const supportLabels = [
+  ['eligibility', /^(?:(?:지원|신청|모집|참여)\s*(?:대상|자격|요건)|자격\s*요건)/],
+  ['benefit', /^지원\s*(?:내용|규모|금액|혜택)/],
+  ['date', /^(?:(?:신청|접수|모집)\s*기간|(?:선정|추진)\s*일정|선정\s*발표)/],
+  ['action', /^(?:(?:신청|접수)\s*방법|제출\s*서류|접수처)/],
+  ['exceptions', /^(?:유의\s*사항|주의\s*사항|제외\s*대상)/]
+];
+function supportGroups(blocks) {
+  const groups = new Map();
+  let context = null;
+  for (const block of blocks) {
+    const numbered = /^\s*(?:제?\d+[.)]|[Ⅰ-Ⅹ]+[.])\s*/;
+    const line = block.text.replace(numbered, '').replace(/^[□■○●▶#]+\s*/, '').trim();
+    const label = supportLabels.find(([, re]) => re.test(line));
+    const rest = label ? line.replace(label[1], '').replace(/^[\s:：-]+/, '') : line;
+    if (label) context = !rest || numbered.test(block.text) || /^[（(]/.test(rest) ? label[0] : null;
+    else if (numbered.test(block.text) || /^[□■]/.test(block.text)) context = null;
+    if (!rest) continue;
+    const fits = /(?:가능한|등록한|보유한|소재한|해당하는|중인)\s*(?:기업|기관|단체|자)\s*[.)]?$/u.test(line);
+    const direct = RULES.SUPPORT.filter(([, , re]) => re.test(line)).map(([id]) => id);
+    const ids = new Set(fits ? ['eligibility'] : label ? [label[0]] :
+      context === 'eligibility' && !direct.includes('date') ? [context] : direct.length ? direct : context ? [context] : []);
+    if (EXCEPTIONS[2].test(line)) ids.add('exceptions');
+    for (const id of ids) {
+      if (!groups.has(id)) groups.set(id, []);
+      // Preserve qualified titles as evidence, but show the actual track details first.
+      groups.get(id).push({ block, rank: label && /^[（(]/.test(rest) ? 1 : 0 });
+    }
+  }
+  return groups;
+}
 export function summarize(document, purpose = 'GENERAL') {
   if (!PURPOSES[purpose]) throw new Error('요약 목적을 다시 선택해 주세요.');
   const source = validateDocument(document);
   const rules = [...RULES[purpose], EXCEPTIONS];
+  const grouped = purpose === 'SUPPORT' ? supportGroups(source.blocks) : null;
   const sections = rules.map(([id, title, pattern]) => {
-    let evidence = source.blocks.filter(b => pattern.test(b.text));
+    const entries = grouped?.get(id) || [];
+    let evidence = grouped ? entries.map(e => e.block) : source.blocks.filter(b => pattern.test(b.text));
     if (id === 'purpose' && !evidence.length) evidence = source.blocks.filter(b => b.text.length >= 20).slice(0, 3);
     // Keep source clauses intact; a cut sentence can lose its exception.
     const seen = new Set(); let length = 0;
-    const excerpts = evidence.filter(b => {
+    const candidates = grouped ? [...entries].sort((a, b) => a.rank - b.rank).map(e => e.block) : evidence;
+    const excerpts = candidates.filter(b => {
       if (b.text.length > 260 || seen.size >= 3 || length + b.text.length > 650 || seen.has(b.text)) return false;
       seen.add(b.text); length += b.text.length; return true;
     });

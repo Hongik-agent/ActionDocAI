@@ -26,3 +26,10 @@ test('length and empty checks match desktop boundaries', () => {
   assert.equal(validateDocument({ blocks: blocksFromText('가'.repeat(160000)) }).characters, 160000);
   assert.throws(() => validateDocument({ blocks: blocksFromText('가'.repeat(160001)) }));
 });
+test('notice headings group their answers and keep eligibility out of submission instructions', () => {
+  const blocks = blocksFromText('3. 신청 자격\n가. 지역 중소기업\n다. 대면 자문회의 참석 및 사전 자료 제출이 가능한 기업\n4. 지원 내용 (2 개 트랙) / 중복 신청 가능\n트랙 A: 전문가 자문 3회\n트랙 B: 시제품 제작비 500,000원\n5. 사업 배경\n지역 산업의 발전\n7. 신청 방법\n가. 제출서류 : 참여신청서 1부');
+  const sections = Object.fromEntries(summarize({ ...source, blocks }, 'SUPPORT').sections.map(s => [s.id, s]));
+  assert.deepEqual(sections.eligibility.excerpts, blocks.slice(1, 3));
+  assert.deepEqual(sections.action.excerpts, [blocks[9]]);
+  assert.deepEqual(sections.benefit.excerpts, [blocks[4], blocks[5], blocks[3]]);
+});
