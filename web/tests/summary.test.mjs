@@ -33,3 +33,11 @@ test('notice headings group their answers and keep eligibility out of submission
   assert.deepEqual(sections.action.excerpts, [blocks[9]]);
   assert.deepEqual(sections.benefit.excerpts, [blocks[4], blocks[5], blocks[3]]);
 });
+test('business preview finds actionable facts beyond contents, damaged OCR and form labels', () => {
+  const blocks = blocksFromText('총연구비\n연구기간\n4. 신청방법 및 제출서류 · · · · 7\n5. 신청기간 및 신청 시 유의사항 · · · 10\n5. 신청기간 및 신청 시 유의사항 99980 10\n10. 문의처 · · · 22\n10. 문의처 Te ── | 인\n기관총괄담당자\n□ 지원기간 및 연구비 (정부출연금) 규모\n연구계획서와 동의서를 온라인으로 제출해야 합니다.\n신청 기한\n2027. 3. 20. 18:00까지\n문의처\n연구지원팀 02-0000-0000\n서류가 누락되면 심사 대상에서 제외됩니다.', 2);
+  const result = summarize({ ...source, blocks }, 'BUSINESS').sections;
+  for (const [i, expected] of ['연구계획서', '2027. 3. 20.', '02-0000-0000', '누락되면'].entries()) {
+    assert.ok(result[i].excerpts[0].text.includes(expected));
+    assert.ok(result[i].evidence.every(b => !/총연구비|99980|Te ─|· · ·/.test(b.text)));
+  }
+});

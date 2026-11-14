@@ -8,12 +8,12 @@ export const PURPOSES = {
 const RULES = {
   GENERAL: [
     ['purpose', '문서 목적과 주요 내용', /목적|사업명|개요|추진|안내|내용|지원대상|지원 대상/],
-    ['action', '필요한 준비와 조치', /요청|회신|제출|협조|구비|첨부|붙임|신청.?방법|접수.?방법/],
+    ['action', '필요한 준비와 조치', /요청|회신|제출|협조|(?<!연)구비|첨부|붙임|신청.?방법|접수.?방법/],
     ['date', '기한과 주요 일정', /기한|마감|일정|기간|까지|일시|시행/],
     ['cost', '금액과 비용', /요금|수수료|지원금|지원.?금액|위약금|[0-9][0-9,]*\s*원/]
   ],
   BUSINESS: [
-    ['action', '요청 사항과 제출 자료', /요청|회신|제출|협조|구비|첨부|붙임/],
+    ['action', '요청 사항과 제출 자료', /요청|회신|제출|협조|(?<!연)구비|첨부|붙임/],
     ['date', '기한과 주요 일정', /기한|마감|일정|기간|까지|일시/],
     ['contact', '담당 부서와 문의', /담당|문의|연락|전화|이메일|접수처/]
   ],
@@ -72,18 +72,74 @@ function supportGroups(blocks) {
   }
   return groups;
 }
+const contactValue = /[\w.+-]+@[\w.-]+\.[a-z]{2,}|0\d{1,2}[-)\s]+\d{3,4}[-\s]+\d{4}/i;
+const dateValue = /\d{1,4}\s*[년월./-]\s*\d{1,2}|\d+\s*(?:일|개월|주|시간)\s*(?:이내|전|후|까지|간)|\d{1,2}:\d{2}/;
+const material = /신청서|계획서|보고서|증명서|등록증|확인서|동의서|공문|명단|사본|서식/;
+const actionVerb = /제출|회신|신청|접수|등록|첨부|송부|작성/;
+const labels = {
+  date: /^(?:(?:연구|지원|사업|신청|접수|제출|모집|등록)\s*)?(?:기간|기한|마감|일정|일시)$/,
+  contact: /^(?:문의(?:처)?|연락처|담당(?:자|\s*부서)|기관총괄담당자|전화|이메일)$/,
+  action: /^(?:제출\s*(?:서류|자료)|구비\s*서류|요청\s*사항|신청\s*방법)$/
+};
+function contentBlocks(blocks) {
+  // OCR may repeat a dotted contents entry on the same page with damaged leaders.
+  const titles = new Set();
+  const leader = /(?:[.·ㆍ…‥．]\s*){3,}(?:\d{1,3})?\s*$/;
+  for (const b of blocks) {
+    if (leader.test(b.text)) titles.add(b.page + ':' + b.text.replace(leader, '').replace(/\s/g, ''));
+  }
+  return blocks.filter(b => {
+    if (leader.test(b.text)) return false;
+    const title = b.text.match(/^(\d+[.)]\s*[가-힣][가-힣\s()·]*?)(?:\s+[A-Za-z0-9|—─].*)$/);
+    return !title || !titles.has(b.page + ':' + title[1].replace(/\s/g, ''));
+  });
+}
+function factScore(id, text) {
+  switch (id) {
+    case 'date': return dateValue.test(text) ? 5 + Number(/접수|신청|마감|제출/.test(text)) : 0;
+    case 'contact': return contactValue.test(text) ? 6 : /[가-힣]{2,}(?:팀|센터|사무국|지원단|과)(?:\s|$|[,.)])/.test(text) ? 3 : 0;
+    case 'action': return Number(material.test(text)) * 3 + Number(actionVerb.test(text) && /하여|해야|합니다|하세요|바랍니다|까지|온라인|이메일|통해|회신해|제출해|접수해|필수/.test(text)) * 3;
+    case 'exceptions': return /경우|경우에는|자는|기업은|시에는|되면|대상에서|할 수 없|할 수 있|됩니다|않습니다|불가$/.test(text) ? 4 : 0;
+    case 'cost': return /\d[\d,.]*\s*(?:천|만|억)?\s*(?:원|%)/.test(text) ? 5 : 0;
+    default: return 0;
+  }
+}
+function factCandidates(blocks, id, pattern) {
+  const matches = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    const label = block.text.replace(/^[\s□○■▪]*(?:\d+[.)]\s*)?/, '').replace(/[:：\s]+$/, '');
+    if (labels[id]?.test(label)) {
+      const next = blocks[i + 1];
+      if (next && next.page === block.page && factScore(id, next.text) && !/^\d+[.)]\s+[가-힣]/.test(next.text)) {
+        if (!pattern.test(next.text)) {
+          matches.push({ block: { ...block, id: block.id + '–' + next.id, text: block.text + ' · ' + next.text }, score: factScore(id, next.text) + 1 });
+          i++;
+        }
+      }
+      continue;
+    }
+    if (!pattern.test(block.text) && !(id === 'contact' && contactValue.test(block.text))) continue;
+    const score = factScore(id, block.text);
+    if (!score && /^(?:\d+[.)]|□|○|ㅇ)\s*/.test(block.text) && /(?:사항|규모|일정|조건|방법|안내|기간|문의처)(?:\s*\([^)]*\))?$/.test(label)) continue;
+    matches.push({ block, score });
+  }
+  return matches;
+}
 export function summarize(document, purpose = 'GENERAL') {
   if (!PURPOSES[purpose]) throw new Error('요약 목적을 다시 선택해 주세요.');
   const source = validateDocument(document);
   const rules = [...RULES[purpose], EXCEPTIONS];
-  const grouped = purpose === 'SUPPORT' ? supportGroups(source.blocks) : null;
+  const blocks = contentBlocks(source.blocks);
+  const grouped = purpose === 'SUPPORT' ? supportGroups(blocks) : null;
   const sections = rules.map(([id, title, pattern]) => {
     const entries = grouped?.get(id) || [];
-    let evidence = grouped ? entries.map(e => e.block) : source.blocks.filter(b => pattern.test(b.text));
-    if (id === 'purpose' && !evidence.length) evidence = source.blocks.filter(b => b.text.length >= 20).slice(0, 3);
+    const facts = grouped ? [] : factCandidates(blocks, id, pattern);
+    let evidence = grouped ? entries.map(e => e.block) : facts.map(f => f.block);
+    if (id === 'purpose' && !evidence.length) evidence = blocks.filter(b => b.text.length >= 20).slice(0, 3);
     // Keep source clauses intact; a cut sentence can lose its exception.
     const seen = new Set(); let length = 0;
-    const candidates = grouped ? [...entries].sort((a, b) => a.rank - b.rank).map(e => e.block) : evidence;
+    const candidates = grouped ? [...entries].sort((a, b) => a.rank - b.rank).map(e => e.block) : facts.length ? facts.sort((a, b) => b.score - a.score).map(f => f.block) : evidence;
     const excerpts = candidates.filter(b => {
       if (b.text.length > 260 || seen.size >= 3 || length + b.text.length > 650 || seen.has(b.text)) return false;
       seen.add(b.text); length += b.text.length; return true;
