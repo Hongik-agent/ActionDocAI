@@ -14,7 +14,12 @@ export async function askGemini(model, instructions, input, schema, max) {
       generationConfig: { responseMimeType: 'application/json', responseJsonSchema: schema, maxOutputTokens: max + 2048 }
     })
   });
-  if (!response.ok) throw Error('provider');
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}));
+    const reason = failure.error?.details?.find(detail => detail.reason)?.reason;
+    console.error('Gemini request failed', response.status, /^[A-Z_]{1,80}$/.test(reason) ? reason : '');
+    throw Error('provider');
+  }
   const { candidates } = await response.json();
   const candidate = candidates?.[0];
   if (candidate?.finishReason !== 'STOP') throw Error('incomplete');

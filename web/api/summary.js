@@ -33,5 +33,8 @@ export default async function summary(req,res) {
     const saved=await db.from('actiondoc_jobs').update({result:items}).eq('job',slot.job).eq('owner',user.id);
     if(saved.error) throw Error('cache');
     return res.json({status:'complete',items});
-  } catch { return res.status(503).json({status:'unavailable'}); }
+  } catch (err) {
+    const stages = ['provider','quota','cache','incomplete','audit','numbers','evidence','items','configuration'];
+    console.error('Summary failed', stages.includes(err.message) ? err.message : 'unavailable');
+    return res.status(503).json({status:'unavailable'}); }
 }
