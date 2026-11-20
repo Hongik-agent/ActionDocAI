@@ -5,7 +5,8 @@ export function checkEvidence(items, blocks) {
     if (typeof statement!=='string' || !statement.trim() || statement.length>600 ||
       typeof quote!=='string' || !quote.trim() || quote.length>1000 ||
       !Number.isInteger(index) || !blocks[index]?.text.includes(quote)) throw Error('evidence');
-    const tokens = text => text.match(/\d+(?:[,.]\d+)*(?:\s*(?:억원|만원|천원|원|%|년|월|일|시|분|명|세|개월))?/g)?.map(v=>v.replace(/[,\s]/g,'')) ?? [];
+    // Match the whole amount before removing spaces, so '만 원' cannot become a bare number.
+    const tokens = text => text.normalize('NFKC').match(/(?:[₩$€¥]\s*)?[+-]?\d+(?:[,.]\d+)*(?:\s*(?:[십백천만억조]\s*)*(?:원|달러|유로|엔|위안)|\s*(?:[십백천만억조]\s*)+|\s*(?:%|퍼센트|개월|년|월|일|시|분|명|세|대|건|회|배))?/g)?.map(v=>v.replace(/[,\s]/g,'')) ?? [];
     const supported=new Set(tokens(quote));
     if(tokens(statement).some(v=>!supported.has(v))) throw Error('numbers');
   }

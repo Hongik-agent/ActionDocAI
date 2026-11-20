@@ -25,3 +25,17 @@ test('Gemini key stays in the provider header across summary and evidence audit'
   assert.deepEqual(await verifiedSummary([{text}], '전체 정리', 'test'), items);
   assert.equal(calls, 2);
 });
+
+test('a changed monetary unit is rejected before the second AI call',async t=>{
+  const old=process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY='actiondoc-test-only-credential';
+  t.after(()=>{if(old===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=old;});
+  const text='지원금은 최대 100만 원입니다.';
+  let calls=0;
+  t.mock.method(globalThis,'fetch',async()=>{
+    calls++;
+    return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({items:[{index:0,quote:text,statement:'지원금은 최대 100억 원입니다.'}]})}]}}]});
+  });
+  await assert.rejects(verifiedSummary([{text}],'전체 정리','test'),/numbers/);
+  assert.equal(calls,1);
+});

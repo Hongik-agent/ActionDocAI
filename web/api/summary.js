@@ -1,3 +1,4 @@
+import {summaryFailure} from '../server/errors.js';
 import {defaultGeminiModel, geminiKey} from '../server/gemini.js';
 import {createHash} from 'node:crypto';
 import {createClient} from '@supabase/supabase-js';
@@ -8,7 +9,7 @@ export default async function summary(req,res) {
   res.setHeader('Cache-Control','private, no-store');
   if(req.method!=='POST') return res.status(405).end();
   const {blocks,purpose,pages,consent}=req.body??{};
-  if(consent!==true || !Object.hasOwn(labels,purpose) || !Number.isInteger(pages) || pages<0 || pages>10 ||
+  if(consent!=='public-document-v1' || !Object.hasOwn(labels,purpose) || !Number.isInteger(pages) || pages<0 || pages>10 ||
     !Array.isArray(blocks) || !blocks.length || blocks.length>10000 ||
     blocks.some(b=>typeof b?.text!=='string'||!b.text.trim()||!Number.isInteger(b.page)||b.page<0||b.page>pages) ||
     blocks.reduce((n,b)=>n+b.text.length,0)>10000) return res.status(400).json({status:'length'});
@@ -22,19 +23,19 @@ export default async function summary(req,res) {
     const model = gemini ? process.env.GEMINI_MODEL || defaultGeminiModel : process.env.OPENAI_MODEL || 'gpt-4.1-mini';
     if(!gemini && !process.env.OPENAI_API_KEY) throw Error('configuration');
     const source=blocks.map(({text,page})=>({text,page}));
-    const f=createHash('sha256').update(JSON.stringify([1,gemini ? 'gemini' : 'openai',model,purpose,pages,source])).digest('hex');
+    const f=createHash('sha256').update(JSON.stringify([3,gemini ? 'gemini' : 'openai',model,purpose,pages,source])).digest('hex');
     const limit=(key,fallback)=>{const n=Number(process.env[key]??fallback);if(!Number.isSafeInteger(n)||n<0||n>100000) throw Error('limit');return n;};
     const reservation=await db.rpc('actiondoc_reserve',{u:user.id,f,personal:limit('USER_DAILY_LIMIT',3),total:limit('GLOBAL_DAILY_LIMIT',30)});
     if(reservation.error) throw Error('quota');
     const slot=reservation.data;
-    if(slot.status==='cached') return res.json({status:'cached',items:checkEvidence(slot.result,source)});
+    if(slot.status==='cached') return res.json({status:'cached',items:checkEvidence(slot.result.map(({statement,index,start,length})=>({statement,index,quote:source[index].text.slice(start,start+length)})),source)});
     if(slot.status!=='reserved') return res.json({status:['personal','global','busy'].includes(slot.status)?slot.status:'unavailable'});
     const items=await verifiedSummary(source,labels[purpose],model);
-    const saved=await db.from('actiondoc_jobs').update({result:items}).eq('job',slot.job).eq('owner',user.id);
+    const saved=await db.from('actiondoc_jobs').update({result:items.map(({statement,index,quote})=>({statement,index,start:source[index].text.indexOf(quote),length:quote.length}))}).eq('job',slot.job).eq('owner',user.id);
     if(saved.error) throw Error('cache');
     return res.json({status:'complete',items});
   } catch (err) {
-    const stages = ['provider','quota','cache','incomplete','audit','numbers','evidence','items','configuration'];
-    console.error('Summary failed', stages.includes(err.message) ? err.message : 'unavailable');
-    return res.status(503).json({status:'unavailable'}); }
+    const status=summaryFailure(err);
+    console.error('Summary failed',status);
+    return res.status(503).json({status}); }
 }
