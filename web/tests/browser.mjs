@@ -55,9 +55,31 @@ try {
   await page.locator('.source-panel summary').click();
   await page.waitForSelector('#source .evidence');
   assert.match(await page.locator('#source').innerText(),/500,000/);
+  // Enough native text: OCR reads only the large image and does not duplicate the page text.
+  const mixed = await browser.newPage();
+  await mixed.setContent('<p style="font-size:20px">Native notice text: submit the application form by March 20 at the office.</p><canvas width="1200" height="300"></canvas>');
+  await mixed.evaluate(() => {
+    const c=document.querySelector('canvas'),x=c.getContext('2d');
+    x.fillStyle='white';x.fillRect(0,0,1200,300);x.fillStyle='black';x.font='64px sans-serif';x.fillText('IMAGE FEE 700,000',40,180);
+    const img=new Image();img.src=c.toDataURL();img.width=600;c.replaceWith(img);
+  });
+  const mixedPdf = await mixed.pdf(); await mixed.close();
+  await page.setInputFiles('#file',{name:'image-text.pdf',mimeType:'application/pdf',buffer:mixedPdf});
+  await page.click('#summarize');
+  await page.waitForSelector('#results:not([hidden])',{timeout:60000});
+  assert.match(await page.locator('#warnings').innerText(),/OCR 인식 쪽: 1/);
+  await page.locator('.source-panel summary').click();
+  await page.waitForSelector('#source .evidence');
+  const mixedSource = await page.locator('#source').innerText();
+  assert.match(mixedSource,/700,?000/);
+  assert.equal(mixedSource.match(/submit the application/g).length,1);
+  await page.setInputFiles('#file',{name:'cancel.pdf',mimeType:'application/pdf',buffer:scan});
+  await page.click('#summarize'); await page.click('#cancel');
+  await page.waitForSelector('#error:not([hidden])'); assert.match(await page.locator('#error').innerText(),/취소/);
+  assert.equal(await page.locator('#cancel').isVisible(), false);
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: '/private/tmp/actiondoc-web-mobile.png', fullPage: true });
   assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(postRequests, []);
-  console.log('PASS: text/HTML/HWP/PDF, 50/51 pages, mixed PDF warning, evidence export, no script execution or external requests, mobile layout');
+  console.log('PASS: text/HTML/HWP/PDF, 50/51 pages, mixed PDF warning, image-region OCR, OCR cancel, evidence export, no script execution or external requests, mobile layout');
 } finally { if (browser) await browser.close(); server.kill(); }

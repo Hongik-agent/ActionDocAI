@@ -149,8 +149,11 @@ export function summarize(document, purpose = 'GENERAL') {
   return { name: source.name, purpose, characters: source.characters, pages: source.pages, warnings: source.warnings || [], sections };
 }
 export function location(block) { return block.page > 0 ? `${block.page}쪽 · ${block.id}` : `본문 · ${block.id}`; }
-export function reportMarkdown(report) {
-  return [`# ${report.name}`, `목적: ${PURPOSES[report.purpose][0]}`, '무료 기본 정리 · AI 문맥 요약이 아닌 원문 발췌입니다.',
+export function reportMarkdown(report, ai = []) {
+  return [`# ${report.name}`, `목적: ${PURPOSES[report.purpose][0]}`,
+    ...(ai.length ? ['## AI 상세 요약', '원문 근거 검증을 통과한 AI 요약입니다. 금액과 기한은 인용된 원문과 함께 확인해 주세요.',
+      ...ai.map(i => `- ${i.statement}\n  > 원문 근거 (${location(i.block)}): ${i.quote}`), '## 무료 기본 정리'] : []),
+    '무료 기본 정리 · AI 문맥 요약이 아닌 원문 발췌입니다.',
     ...report.warnings.map(w => `주의: ${w}`), ...report.sections.flatMap(s => [
       `\n## ${s.title}`, ...(s.excerpts.length ? s.excerpts.map(b => `- ${b.text} (${location(b)})`) : ['짧게 표시할 원문이 없습니다. 아래 근거를 확인해 주세요.']),
       `\n### 전체 원문 근거 (${s.evidence.length}곳)`, ...s.evidence.map(b => `- [${location(b)}] ${b.text}`)

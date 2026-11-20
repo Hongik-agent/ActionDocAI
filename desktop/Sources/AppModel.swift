@@ -30,6 +30,7 @@ import UniformTypeIdentifiers
     @Published var document:SourceDocument?
     @Published var tasks:[WorkItem]=[]
     @Published var history:[HistoryEntry]=[]
+    @Published var archiveSize=0
     @Published var tab="analyze"
     @Published var showSource=false
     @Published var selectedFinding:Finding?
@@ -38,6 +39,7 @@ import UniformTypeIdentifiers
     @Published var shortcutAvailable=true
     private(set) var api:APIClient?
     private(set) var archive:LocalArchive?
+    var archiveNearlyFull:Bool{archiveSize>=LocalArchive.warnBytes}
     var taskCount:Int{tasks.filter{$0.status=="TODO"}.count}
     var canAnalyze:Bool{ready && serviceReady && !busy && (file != nil || !text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)}
     func boot() async {
@@ -66,7 +68,7 @@ import UniformTypeIdentifiers
         do{try PersonalKeychain.remove();useAI=false;consent=false;var p=PersonalSettings.load();p.connected=false;try p.save();apiKeyInput="";showSettings=false;resetReport();await boot()}catch{self.error=error.localizedDescription}
     }
 
-    private func refreshLocal(){tasks=archive?.data.tasks ?? [];history=archive?.data.history ?? []}
+    private func refreshLocal(){tasks=archive?.data.tasks ?? [];history=archive?.data.history ?? [];archiveSize=archive?.size ?? 0}
     func refreshTasks() async{refreshLocal()}
     func pickFile(){guard !busy else{return};let p=NSOpenPanel();p.title="분석할 안내문 선택";p.prompt="선택";p.allowedContentTypes=[.pdf,.html,.plainText,UTType(filenameExtension:"md") ?? .plainText,UTType(filenameExtension:"hwp") ?? UTType(importedAs:"com.hancom.hwp")];p.allowsMultipleSelection=false;p.canChooseDirectories=false;if p.runModal() == .OK,let url=p.url{acceptFile(url)}}
     func acceptFile(_ url:URL){guard !busy else{return};guard ["pdf","hwp","html","htm","txt","md"].contains(url.pathExtension.lowercased())else{error="PDF, HWP, HTML, TXT, MD 파일을 선택해 주세요.";return};do{let v=try url.resourceValues(forKeys:[.fileSizeKey,.isRegularFileKey]);guard v.isRegularFile==true,(v.fileSize ?? 0)<=UploadLimits.maxFileBytes else{throw ServiceError(message:"\(UploadLimits.maxFileMB)MB 이하 문서를 선택해 주세요.")};file=url;text="";resetReport();tab="analyze"}catch{self.error=error.localizedDescription}}
@@ -77,7 +79,7 @@ import UniformTypeIdentifiers
         guard canAnalyze,let api else{return};if useAI && !aiConfigured{error="AI 설정에서 본인의 OpenAI API 키를 연결해 주세요.";return};if useAI && !consent{error="문서 전송과 본인 API 사용 비용에 동의해 주세요.";return};guard context.count<=4000 else{error="추가 정보는 4,000자 이하여야 합니다.";return}
         busy=true;error=nil;notice=nil;report=nil;document=nil;defer{busy=false}
         do{status="문서와 스캔 페이지를 읽고 있어요…";let doc=try await api.document(file:file,text:text,onProgress:{[weak self] progress in self?.status=progress.message});document=doc;status=useAI ? "AI가 문서 전체를 요약하고 원문 근거를 검증하고 있어요…":"문서의 주요 내용과 원문 근거를 정리하고 있어요…";let result=try await api.analyze(doc:doc,context:context,ai:useAI,consent:useAI && consent,engine:useAI ? "ai":"local",purpose:summaryPurpose.rawValue);report=result
-            do{try archive?.remember(document:doc,report:result,context:context);refreshLocal()}catch{self.error="분석은 완료했지만 Mac 기록 저장에 실패했습니다: \(error.localizedDescription)"}
+            do{try archive?.remember(document:doc,report:result,context:context);refreshLocal();if archiveNearlyFull{notice="Mac 기록 용량이 50MB에 가까워졌습니다. 기록 화면에서 필요한 기록을 내보낸 뒤 오래된 기록을 삭제해 주세요."}}catch{self.error="분석은 완료했지만 Mac 기록 저장에 실패했습니다: \(error.localizedDescription)"}
             try? await api.bootstrap();analysesRemaining=api.analysesRemaining;status="분석 완료 · 이 Mac에 기록 저장"
         }catch{self.error=error.localizedDescription;status="분석을 완료하지 못했어요";try? await api.bootstrap();analysesRemaining=api.analysesRemaining}
     }
@@ -88,8 +90,9 @@ import UniformTypeIdentifiers
     func complete(_ task:WorkItem) async{guard let archive,!busy else{return};do{try archive.setStatus(task,done:task.status != "DONE");refreshLocal()}catch{self.error=error.localizedDescription}}
     func registered(_ finding:Finding)->Bool{tasks.contains{$0.analysisId==report?.id && $0.findingId==finding.id}}
     func openHistory(_ item:HistoryEntry){guard !busy else{return};file=nil;text="";context=item.context;consent=false;document=item.document;report=item.report;error=nil;notice="이 Mac에 저장한 결과입니다. 재분석하려면 원본 문서를 다시 선택하세요.";tab="analyze"}
+    func deleteHistory(_ item:HistoryEntry){guard let archive,!busy else{return};let alert=NSAlert();alert.messageText="이 분석 기록을 삭제할까요?";alert.informativeText="‘\(item.report.title)’ 결과와 함께 저장한 원문이 이 Mac에서 삭제되며 되돌릴 수 없습니다. 등록한 작업은 유지됩니다.";alert.alertStyle = .warning;alert.addButton(withTitle:"삭제");alert.addButton(withTitle:"취소");guard alert.runModal() == .alertFirstButtonReturn else{return};do{try archive.forget(item.id);refreshLocal();notice="분석 기록을 삭제했습니다."}catch{self.error=error.localizedDescription}}
     func exportRecords(){guard let archive,!busy else{return};let p=NSSavePanel();p.nameFieldStringValue="ActionDoc-기록.json";p.message="문서 내용과 입력한 상황이 포함됩니다. 내보낸 파일을 안전하게 보관하세요.";p.allowedContentTypes=[.json];if p.runModal() == .OK,let url=p.url{do{try archive.exportData().write(to:url,options:.atomic);try FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:url.path);notice="기록을 내보냈습니다."}catch{self.error=error.localizedDescription}}}
-    func importRecords(){guard let archive,!busy else{return};let p=NSOpenPanel();p.allowedContentTypes=[.json];p.allowsMultipleSelection=false;p.message="기존 기록을 보존하며 새로운 기록만 추가합니다.";if p.runModal() == .OK,let url=p.url{do{guard (try url.resourceValues(forKeys:[.fileSizeKey]).fileSize ?? 0)<=50_000_000 else{throw ServiceError(message:"50MB 이하 기록 파일을 선택해 주세요.")};try archive.importData(Data(contentsOf:url));refreshLocal();notice="기존 기록을 보존하고 가져왔습니다."}catch{self.error=error.localizedDescription}}}
+    func importRecords(){guard let archive,!busy else{return};let p=NSOpenPanel();p.allowedContentTypes=[.json];p.allowsMultipleSelection=false;p.message="기존 기록을 보존하며 새로운 기록만 추가합니다.";if p.runModal() == .OK,let url=p.url{do{guard (try url.resourceValues(forKeys:[.fileSizeKey]).fileSize ?? 0)<=LocalArchive.maxBytes else{throw ServiceError(message:"50MB 이하 기록 파일을 선택해 주세요.")};try archive.importData(Data(contentsOf:url));refreshLocal();notice="기존 기록을 보존하고 가져왔습니다."}catch{self.error=error.localizedDescription}}}
     func openRoute(_ route:ActionRoute){
         guard route.isSourceBacked(by:document),let url=route.validatedURL else{error="이 연결 주소는 지원하지 않거나 올바르지 않습니다. 원문에서 확인해 주세요.";return}
         if !NSWorkspace.shared.open(url){error="주소를 열 수 있는 앱을 찾지 못했습니다. 주소를 복사해 이용해 주세요."}else{notice=route.kind=="WEB" ? "브라우저에서 연결 주소를 열었습니다.":"연결 주소를 처리할 앱을 열었습니다."}

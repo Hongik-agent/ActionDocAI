@@ -18,6 +18,8 @@ const messages={
   storage:'사용량 확인 또는 요약 저장에 실패했습니다. 잠시 후 다시 이용해 주세요.',
   login:'AI 요약은 로그인이 필요합니다.'
 };
+// Verified items of the current document only; reset with it.
+export const aiItems=()=>current?.items??[];
 export function resetAi(doc=null,purpose=null) {
   current=doc?{doc,purpose}:null;
   $('ai-output').replaceChildren(); $('ai-consent').checked=false; $('ai-status').textContent='';
@@ -77,6 +79,7 @@ async function run() {
       p.textContent=item.statement;summary.textContent='원문 근거 · '+location(doc.blocks[item.index]);quote.textContent=item.quote;
       details.append(summary,quote);article.append(p,details);$('ai-output').append(article);
     }
+    job.items=data.items.map(({statement,quote,index})=>({statement,quote,block:doc.blocks[index]}));
     $('ai-status').textContent=data.status==='cached'?'저장된 요약을 다시 표시했습니다. 무료 횟수는 차감되지 않습니다.':'AI 요약 완료 · 금액과 기한은 인용된 근거와 함께 확인해 주세요.';
   } catch(e) {if(job===current)$('ai-status').textContent=(messages[e.message]||messages.unavailable)+' 기본 정리를 확인해 주세요.';}
   finally {running=false;$('ai-run').disabled=!current;}

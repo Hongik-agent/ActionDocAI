@@ -309,10 +309,12 @@ struct LocalHistoryView:View {
             Text("이 Mac의 분석 기록").font(.system(size:23,weight:.bold))
             Text("가입 없이 이 Mac에 저장합니다. 서버 연결이 없어도 결과와 작업을 확인할 수 있어요.").font(.caption).foregroundStyle(.secondary)
             HStack{Button("기록 내보내기"){model.exportRecords()};Button("기록 가져오기"){model.importRecords()}}.font(.caption).disabled(model.busy)
+            Text("기록 용량 \(ByteCountFormatter.string(fromByteCount:Int64(model.archiveSize),countStyle:.file)) / 50MB").font(.caption).foregroundStyle(model.archiveNearlyFull ? Color.orange:Color.secondary)
+            if model.archiveNearlyFull{Text("저장 공간이 50MB에 가까워졌습니다. 50MB를 넘으면 새 분석 기록과 작업을 저장할 수 없으니, 필요한 기록을 내보낸 뒤 오래된 기록을 삭제해 주세요.").font(.caption).foregroundStyle(.orange)}
             if model.history.isEmpty{Text("저장한 분석이 아직 없어요. 분석을 마치면 이곳에 자동으로 저장됩니다.").font(.callout).foregroundStyle(.secondary).padding(.vertical,30)}
             ForEach(model.history){item in
                 VStack(alignment:.leading,spacing:9){
-                    HStack{Text(item.report.title).font(.system(size:14,weight:.semibold)).lineLimit(2);Spacer();Button("결과 열기"){model.openHistory(item)}.font(.caption)}
+                    HStack{Text(item.report.title).font(.system(size:14,weight:.semibold)).lineLimit(2);Spacer();Button("결과 열기"){model.openHistory(item)}.font(.caption);Button("삭제",role:.destructive){model.deleteHistory(item)}.font(.caption).disabled(model.busy)}
                     Text(item.document.name).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     Text(String(item.savedAt.prefix(10))).font(.system(size:10)).foregroundStyle(.secondary)
                     if let overview=item.report.overview{Text(overview).font(.caption).lineLimit(3).foregroundStyle(.secondary)}

@@ -1,8 +1,8 @@
-import {initializeAi,resetAi} from './ai.js';
+import {aiItems,initializeAi,resetAi} from './ai.js';
 import { PURPOSES, blocksFromText, validateDocument, summarize, location, reportMarkdown } from './summary.js';
 import { readFile } from './read.js';
 const $ = id => document.getElementById(id);
-let mode = 'file', selected = null, busy = false, report = null;
+let mode = 'file', selected = null, busy = false, report = null, reading = null;
 const sample = `지역기업 성장지원 사업 안내\n지원 대상: 지역 내 사업장을 둔 중소기업입니다.\n지원 내용: 선정 기업에 교육비 최대 500,000원을 지원합니다.\n신청 기간: 2027년 3월 1일부터 2027년 3월 20일까지입니다.\n신청 방법: 신청서와 사업자등록증을 운영팀에 제출해 주세요.\n단, 동일 항목으로 다른 지원금을 받은 기업은 제외됩니다.\n제출 서류가 누락되면 심사 대상에서 제외될 수 있습니다.\n문의: 기업지원팀, 02-0000-0000\n※ 기능 체험용 가상 문서입니다.`;
 function node(tag, cls, text) { const el = document.createElement(tag); if (cls) el.className = cls; if (text !== undefined) el.textContent = text; return el; }
 function invalidate() { resetAi(); report = null; $('results').hidden = true; $('error').hidden = true; }
@@ -20,7 +20,7 @@ function choose(file) {
 function setBusy(value) {
   busy = value;
   for (const id of ['summarize', 'file', 'file-tab', 'text-tab', 'document-text', 'purpose', 'sample', 'remove-file']) $(id).disabled = value;
-  $('summarize').textContent = value ? '문서를 읽고 있어요…' : '문서 정리하기 →';
+  $('summarize').textContent = value ? '문서를 읽고 있어요…' : '문서 정리하기 →'; $('cancel').hidden = !value;
 }
 function evidence(block) { const el = node('div', 'evidence'); el.append(node('span', 'location', location(block)), node('div', '', block.text)); return el; }
 function render(doc) {
@@ -60,14 +60,16 @@ $('summarize').onclick = async () => {
   if (mode === 'text' && !$('document-text').value.trim()) { error('정리할 본문을 입력해 주세요.'); return; }
   setBusy(true); $('progress').textContent = '본문과 원문 위치를 읽고 있어요…';
   try {
-    const doc = mode === 'file' ? await readFile(selected, value => { $('progress').textContent = value; }) : validateDocument({ name: '붙여넣은 안내문', pages: 0, blocks: blocksFromText($('document-text').value), warnings: [] });
+    reading = new AbortController();
+    const doc = mode === 'file' ? await readFile(selected, value => { $('progress').textContent = value; }, reading.signal) : validateDocument({ name: '붙여넣은 안내문', pages: 0, blocks: blocksFromText($('document-text').value), warnings: [] });
     resetAi(doc,$('purpose').value); report = summarize(doc, $('purpose').value); render(doc); $('progress').textContent = '정리 완료 · 문서를 서버로 전송하지 않았습니다.';
   } catch (reason) { error(reason.message || '문서를 읽지 못했습니다. 형식과 손상 여부를 확인해 주세요.'); $('progress').textContent = ''; }
   finally { setBusy(false); }
 };
+$('cancel').onclick = () => reading?.abort(new Error('문서 읽기를 취소했습니다.'));
 $('download').onclick = () => {
   if (!report) return;
-  const url = URL.createObjectURL(new Blob([reportMarkdown(report)], { type: 'text/markdown;charset=utf-8' }));
+  const url = URL.createObjectURL(new Blob([reportMarkdown(report, aiItems())], { type: 'text/markdown;charset=utf-8' }));
   const link = document.createElement('a'); link.href = url; link.download = 'ActionDoc-정리.md'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
