@@ -23,7 +23,7 @@ export const aiItems=()=>current?.items??[];
 export function resetAi(doc=null,purpose=null) {
   current=doc?{doc,purpose}:null;
   $('ai-output').replaceChildren(); $('ai-consent').checked=false; $('ai-status').textContent='';
-  $('ai-run').disabled=running||!doc;
+  $('ai-run').disabled=running||!doc; $('ai-hint').hidden=!!doc;
 }
 export async function initializeAi() {
   try {
