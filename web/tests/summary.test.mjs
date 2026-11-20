@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { blocksFromText, summarize, reportMarkdown, validateDocument } from '../src/summary.js';
+import { blocksFromText, pdfPageText, summarize, reportMarkdown, validateDocument } from '../src/summary.js';
 const source = { name: '공문.txt', pages: 0, blocks: blocksFromText('지원 대상: 지역 중소기업\n지원 내용: 교육비 50,000원\n2027년 11월 25일까지 보고서를 제출해 주세요.\n담당 부서: 운영팀\n월 요금은 33,000원입니다.\n계약 해지 시 위약금이 있습니다.\n단, 신규 신청자는 제외됩니다.'), warnings: [] };
 test('purpose changes grouping, with exact evidence and exceptions retained', () => {
   for (const [purpose, first] of [['BUSINESS', 'action'], ['SUPPORT', 'eligibility'], ['CONTRACT', 'cost']]) {
@@ -47,4 +47,25 @@ test('saved report includes verified AI items with their evidence only when pres
   const markdown = reportMarkdown(report, [{ statement: '교육비 50,000원을 지원합니다.', quote: '교육비 50,000원', block: source.blocks[1] }]);
   assert.ok(markdown.indexOf('AI 상세 요약') < markdown.indexOf('무료 기본 정리'));
   assert.ok(markdown.includes('- 교육비 50,000원을 지원합니다.\n  > 원문 근거 (본문 · b2): 교육비 50,000원'));
+});
+test('PDF text keeps real word gaps, rejoins wrapped lines and keeps list items apart', () => {
+  // One run per glyph group, positioned like pdf.js text content (font size 10, x/width in page units).
+  const run = (str, x, y, width = str.length * 10) => ({ str, transform: [10, 0, 0, 10, x, y], width, height: 10 });
+  const text = pdfPageText([
+    run('사', 0, 800), run('업', 40, 800), run('명', 80, 800), run(': 지원사업', 90, 800),
+    run('(', 0, 780), run('필수', 10, 780), run(')', 30, 780), run('동의서를', 45, 780), run('서명 후 스캔 또는 사진파일로', 90, 780, 400), run('제출하고,', 495, 780, 90),
+    run('담당 부서에 회신합니다.', 0, 760),
+    run('□ 신청기간: 2026. 5. 11.', 0, 740, 585),
+    run('○ 신청방법: 온라인', 0, 720),
+    run('청년도전지원사업 12p', 0, 700, 585), run('청년일경험지원 14p', 0, 680)
+  ]);
+  assert.deepEqual(text.split('\n'), ['사업명: 지원사업', '(필수) 동의서를 서명 후 스캔 또는 사진파일로 제출하고, 담당 부서에 회신합니다.',
+    '□ 신청기간: 2026. 5. 11.', '○ 신청방법: 온라인', '청년도전지원사업 12p', '청년일경험지원 14p']);
+});
+test('excerpts skip bare headings, prefer labelled values and do not read amounts as dates', () => {
+  const blocks = blocksFromText('1 사업개요\n□ 주요내용\n□ 사업명: 청년 이자 지원사업\n□ 모집인원: 60명\n- 보증금(2.5억원 이하)의 90% 범위에서 최대 1억원까지 가능\n□ 신청기간: 2026. 5. 11.(월) 10:00 ~ 29.(금) 18:00\n계약 월세액 0 271,000원 541,000원 812,000원\n- 지원금리: 연 3.5%');
+  const sections = Object.fromEntries(summarize({ ...source, blocks }, 'GENERAL').sections.map(s => [s.id, s.excerpts.map(b => b.text)]));
+  assert.deepEqual(sections.purpose, ['□ 사업명: 청년 이자 지원사업', '□ 모집인원: 60명']);
+  assert.deepEqual(sections.date, ['□ 신청기간: 2026. 5. 11.(월) 10:00 ~ 29.(금) 18:00']);
+  assert.equal(sections.cost[0], '- 지원금리: 연 3.5%');
 });

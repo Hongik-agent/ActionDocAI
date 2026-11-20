@@ -7,7 +7,7 @@ export const PURPOSES = {
 };
 const RULES = {
   GENERAL: [
-    ['purpose', '문서 목적과 주요 내용', /목적|사업명|개요|추진|안내|내용|지원대상|지원 대상/],
+    ['purpose', '문서 목적과 주요 내용', /목적|사업명|개요|추진|안내|내용|(?:지원|사업|모집)\s*대상|모집\s*인원/],
     ['action', '필요한 준비와 조치', /요청|회신|제출|협조|(?<!연)구비|첨부|붙임|신청.?방법|접수.?방법/],
     ['date', '기한과 주요 일정', /기한|마감|일정|기간|까지|일시|시행/],
     ['cost', '금액과 비용', /요금|수수료|지원금|지원.?금액|위약금|[0-9][0-9,]*\s*원/]
@@ -33,6 +33,31 @@ const EXCEPTIONS = ['exceptions', '제한·예외와 주의 사항', /제외|예
 export function blocksFromText(text, page = 0, offset = 0) {
   return text.replace(/\u0000/g, '').split(/\r?\n|\r/).map(t => t.replace(/[\t\f ]+/g, ' ').trim()).filter(Boolean)
     .map((text, i) => ({ id: `b${offset + i + 1}`, page, text }));
+}
+const listMarker = /^(?:[□■○●◦▪◆◇※*☞▶►•·ㅇ\-–—]|[①-⑳➀-➉]|\(?\d{1,2}[.)]|[가-하][.)]|[【\[<〈「『])/;
+// PDF text runs carry no spaces, and layout breaks split sentences; rebuild both from glyph positions.
+export function pdfPageText(items) {
+  const lines = []; let line = null;
+  for (const item of items) {
+    const str = item.str?.replace(/\u0000/g, '');
+    if (!str) continue;
+    const [a, b, , , x, y] = item.transform, size = Math.hypot(a, b) || item.height || 10;
+    if (!line || Math.abs(y - line.y) > 3) lines.push(line = { text: '', left: x, right: x, y });
+    else if (x - line.right > size * 0.2 && !/\s$/.test(line.text) && !/^\s/.test(str)) line.text += ' ';
+    line.text += str; line.right = Math.max(line.right, x + item.width);
+  }
+  // Letter-spaced headings such as '사 업 명' read as one word, and never continue into the next line.
+  const spaced = /(?<=^|\s)[가-힣](?: [가-힣]){2,}(?=[\s:：]|$)/g;
+  const texts = lines.map(l => l.text.replace(/\s+/g, ' ').trim().replace(spaced, m => (l.spaced = true, m.replace(/ /g, ''))));
+  const left = Math.min(...lines.map(l => l.left)), right = Math.max(...lines.map(l => l.right));
+  const out = [];
+  texts.forEach((text, i) => {
+    const prev = lines[i - 1];
+    const wrapped = prev && !prev.spaced && out.length && text && prev.right >= right - (right - left) * 0.12 &&
+      /[가-힣A-Za-z0-9,·(]$/.test(out.at(-1)) && !/[.!?。]$|다$|\s\d+p?$/i.test(out.at(-1)) && !listMarker.test(text);
+    if (wrapped) out[out.length - 1] += ' ' + text; else out.push(text);
+  });
+  return out.join('\n');
 }
 export function validateDocument(document) {
   const size = document.blocks.reduce((sum, b) => sum + b.text.length, 0);
@@ -60,20 +85,22 @@ function supportGroups(blocks) {
     else if (numbered.test(block.text) || /^[□■]/.test(block.text)) context = null;
     if (!rest) continue;
     const fits = /(?:가능한|등록한|보유한|소재한|해당하는|중인)\s*(?:기업|기관|단체|자)\s*[.)]?$/u.test(line);
-    const direct = RULES.SUPPORT.filter(([, , re]) => re.test(line)).map(([id]) => id);
+    // '까지' alone also ends limits such as '최대 3세까지'; a schedule needs an actual date.
+    const direct = RULES.SUPPORT.filter(([id, , re]) => re.test(line) && (id !== 'date' || dateValue.test(line))).map(([id]) => id);
     const ids = new Set(fits ? ['eligibility'] : label ? [label[0]] :
       context === 'eligibility' && !direct.includes('date') ? [context] : direct.length ? direct : context ? [context] : []);
     if (EXCEPTIONS[2].test(line)) ids.add('exceptions');
     for (const id of ids) {
       if (!groups.has(id)) groups.set(id, []);
       // Preserve qualified titles as evidence, but show the actual track details first.
-      groups.get(id).push({ block, rank: label && /^[（(]/.test(rest) ? 1 : 0 });
+      groups.get(id).push({ block, rank: label && /^[（(]/.test(rest) ? 1 : /[:：]\s*\S/.test(line) ? -1 : 0 });
     }
   }
   return groups;
 }
 const contactValue = /[\w.+-]+@[\w.-]+\.[a-z]{2,}|0\d{1,2}[-)\s]+\d{3,4}[-\s]+\d{4}/i;
-const dateValue = /\d{1,4}\s*[년월./-]\s*\d{1,2}|\d+\s*(?:일|개월|주|시간)\s*(?:이내|전|후|까지|간)|\d{1,2}:\d{2}/;
+// Decimals such as '2.5억원' are amounts, not month/day dates.
+const dateValue = /\d{1,4}\s*[년월./-]\s*\d{1,2}(?![\d.]|\s*(?:억|만|천|원|%|배|세))|\d+\s*(?:일|개월|주|시간)\s*(?:이내|전|후|까지|간)|\d{1,2}:\d{2}/;
 const material = /신청서|계획서|보고서|증명서|등록증|확인서|동의서|공문|명단|사본|서식/;
 const actionVerb = /제출|회신|신청|접수|등록|첨부|송부|작성/;
 const labels = {
@@ -94,13 +121,18 @@ function contentBlocks(blocks) {
     return !title || !titles.has(b.page + ':' + title[1].replace(/\s/g, ''));
   });
 }
+// A short line without a value is a heading; short sub-items such as '가. 지역 중소기업' are answers.
+const heading = text => !/[:：]/.test(text) && !/^\s*(?:[가-하][.)]|[①-⑳➀-➉]|[-–·])/.test(text) &&
+  text.replace(/^[\s□■○●◦▪ㅇ※*]*(?:\d+[.)]?\s*)?/, '').replace(/\s/g, '').length <= 10;
 function factScore(id, text) {
   switch (id) {
+    case 'purpose': return /^[\s□■○●◦▪ㅇ\-]*(?:사업명|사업\s*목적|목\s*적|(?:사업|지원|모집|신청)\s*대상|모집\s*인원|지원\s*내용|주요\s*내용)\s*[:：]\s*\S/.test(text) ? 6 : /위해|위하여|목적으로/.test(text) ? 4 : 0;
     case 'date': return dateValue.test(text) ? 5 + Number(/접수|신청|마감|제출/.test(text)) : 0;
     case 'contact': return contactValue.test(text) ? 6 : /[가-힣]{2,}(?:팀|센터|사무국|지원단|과)(?:\s|$|[,.)])/.test(text) ? 3 : 0;
     case 'action': return Number(material.test(text)) * 3 + Number(actionVerb.test(text) && /하여|해야|합니다|하세요|바랍니다|까지|온라인|이메일|통해|회신해|제출해|접수해|필수/.test(text)) * 3;
     case 'exceptions': return /경우|경우에는|자는|기업은|시에는|되면|대상에서|할 수 없|할 수 있|됩니다|않습니다|불가$/.test(text) ? 4 : 0;
-    case 'cost': return /\d[\d,.]*\s*(?:천|만|억)?\s*(?:원|%)/.test(text) ? 5 : 0;
+    // A row of bare amounts is a table cell run without its labels.
+    case 'cost': return (text.match(/\d[\d,.]*\s*(?:천|만|억)?\s*원/g)?.length ?? 0) >= 3 ? 0 : /\d[\d,.]*\s*(?:천|만|억)?\s*(?:원|%)/.test(text) ? 5 : 0;
     default: return 0;
   }
 }
@@ -139,11 +171,14 @@ export function summarize(document, purpose = 'GENERAL') {
     if (id === 'purpose' && !evidence.length) evidence = blocks.filter(b => b.text.length >= 20).slice(0, 3);
     // Keep source clauses intact; a cut sentence can lose its exception.
     const seen = new Set(); let length = 0;
-    const candidates = grouped ? [...entries].sort((a, b) => a.rank - b.rank).map(e => e.block) : facts.length ? facts.sort((a, b) => b.score - a.score).map(f => f.block) : evidence;
+    // Prefer lines that carry an actual value; bare headings and keyword-only matches stay in the evidence list.
+    const scored = facts.some(f => f.score > 0) ? facts.filter(f => f.score > 0) : facts;
+    const candidates = grouped ? [...entries].sort((a, b) => a.rank - b.rank).map(e => e.block) : scored.length ? scored.sort((a, b) => b.score - a.score).map(f => f.block) : evidence;
     const excerpts = candidates.filter(b => {
-      if (b.text.length > 260 || seen.size >= 3 || length + b.text.length > 650 || seen.has(b.text)) return false;
+      if (b.text.length > 260 || seen.size >= 3 || length + b.text.length > 650 || seen.has(b.text) || heading(b.text)) return false;
       seen.add(b.text); length += b.text.length; return true;
     });
+    if (!grouped) excerpts.sort((a, b) => a.page - b.page || parseInt(a.id.slice(1)) - parseInt(b.id.slice(1)));
     return { id, title, evidence, excerpts };
   });
   return { name: source.name, purpose, characters: source.characters, pages: source.pages, warnings: source.warnings || [], sections };

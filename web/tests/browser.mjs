@@ -55,6 +55,23 @@ try {
   await page.locator('.source-panel summary').click();
   await page.waitForSelector('#source .evidence');
   assert.match(await page.locator('#source').innerText(),/500,000/);
+  // Parallel OCR keeps page order, block numbering and per-page warnings.
+  const multi = await browser.newPage();
+  await multi.setContent('<style>canvas{display:block;break-after:page}</style>'+[1,2,3,4,5].map(()=>'<canvas width="1000" height="200"></canvas>').join(''));
+  await multi.evaluate(() => document.querySelectorAll('canvas').forEach((canvas,i)=>{
+    const c=canvas.getContext('2d');c.fillStyle='white';c.fillRect(0,0,1000,200);c.fillStyle='black';c.font='48px sans-serif';c.fillText(`SCAN PAGE ${i+1} FEE ${i+1}00,000`,40,120);
+  }));
+  const multiScan = await multi.pdf(); await multi.close();
+  await page.setInputFiles('#file',{name:'multi-scan.pdf',mimeType:'application/pdf',buffer:multiScan});
+  await page.click('#summarize');
+  await page.waitForSelector('#results:not([hidden])',{timeout:120000});
+  assert.match(await page.locator('#warnings').innerText(),/OCR 인식 쪽: 1, 2, 3, 4, 5\./);
+  await page.locator('.source-panel summary').click();
+  await page.waitForSelector('#source .evidence');
+  const multiText = await page.locator('#source').innerText();
+  const order = [1,2,3,4,5].map(n => multiText.search(new RegExp(`PAGE\\s*${n}\\b`)));
+  assert.ok(order.every((v,i)=>v>=0 && (i===0 || v>order[i-1])), 'OCR pages out of order: '+order);
+  for (const [i, el] of (await page.locator('#source .location').allInnerTexts()).entries()) assert.match(el, new RegExp(`· b${i+1}$`));
   // Enough native text: OCR reads only the large image and does not duplicate the page text.
   const mixed = await browser.newPage();
   await mixed.setContent('<p style="font-size:20px">Native notice text: submit the application form by March 20 at the office.</p><canvas width="1200" height="300"></canvas>');
@@ -81,5 +98,5 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: '/private/tmp/actiondoc-web-mobile.png', fullPage: true });
   assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(postRequests, []);
-  console.log('PASS: text/HTML/HWP/PDF, 50/51 pages, mixed PDF warning, image-region OCR, OCR cancel, evidence export, no script execution or external requests, mobile layout');
+  console.log('PASS: text/HTML/HWP/PDF, 50/51 pages, mixed PDF warning, image-region OCR, parallel OCR page order, OCR cancel, evidence export, no script execution or external requests, mobile layout');
 } finally { if (browser) await browser.close(); server.kill(); }

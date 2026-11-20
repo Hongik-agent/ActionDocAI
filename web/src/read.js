@@ -1,6 +1,6 @@
 import { createWorker } from 'tesseract.js';
 import { getDocument, GlobalWorkerOptions, OPS, Util } from 'pdfjs-dist';
-import { LIMITS, blocksFromText, validateDocument } from './summary.js';
+import { LIMITS, blocksFromText, pdfPageText, validateDocument } from './summary.js';
 GlobalWorkerOptions.workerSrc = '/pdf.worker.mjs';
 export function htmlText(html) {
   // Template contents stay inert: embedded resources are never inserted into the page.
@@ -42,10 +42,25 @@ export function imageRegions({ fnArray, argsArray }, viewport) {
 }
 function limited(promise, signal, ms) {
   return new Promise((resolve, reject) => {
-    const abort = () => reject(signal.reason), timer = setTimeout(() => reject(new Error(OCR_TIMEOUT)), ms);
+    const abort = () => reject(signal.reason), timer = ms && setTimeout(() => reject(new Error(OCR_TIMEOUT)), ms);
     signal?.addEventListener('abort', abort, { once: true });
     promise.then(resolve, reject).finally(() => { clearTimeout(timer); signal?.removeEventListener('abort', abort); });
   });
+}
+// Each worker holds about 200MB of OCR models, so phones and low-memory devices get fewer.
+function ocrPool() {
+  const small = (navigator.deviceMemory || 8) <= 4 || matchMedia('(pointer: coarse)').matches;
+  const size = Math.max(1, Math.min((navigator.hardwareConcurrency || 2) - 1, small ? 2 : 4));
+  const workers = [], idle = [], waiting = []; let created = 0, closed = false;
+  const spawn = () => { created++; return createWorker('kor+eng',1,{workerPath:'/ocr/worker.min.js',corePath:'/ocr',langPath:'/ocr',workerBlobURL:false})
+    .then(w => { if (closed) { w.terminate(); throw new Error('OCR이 종료되었습니다.'); } workers.push(w); return w; }); };
+  return {
+    acquire: () => idle.length ? Promise.resolve(idle.pop()) : created < size ? spawn() : new Promise(r => waiting.push(r)),
+    release: w => waiting.length ? waiting.shift()(w) : idle.push(w),
+    // A timed-out worker may still be busy, so replace it instead of reusing it.
+    discard: w => { created--; workers.splice(workers.indexOf(w), 1); w.terminate(); if (waiting.length) waiting.shift()(spawn()); },
+    close: () => { closed = true; return Promise.all(workers.map(w => w.terminate())); }
+  };
 }
 export async function readFile(file, progress = () => {}, signal) {
   if (file.size > LIMITS.fileBytes) throw new Error('파일은 50MB까지 지원합니다.');
@@ -53,22 +68,15 @@ export async function readFile(file, progress = () => {}, signal) {
   if (!['pdf', 'hwp', 'html', 'htm', 'txt', 'md'].includes(ext)) throw new Error('PDF·HWP·HTML·TXT·MD 파일을 선택해 주세요. HWPX는 지원하지 않습니다.');
   if (ext === 'pdf') {
     const task = getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, stopAtErrors: true });
-    let worker;
-    const recognized = [];
+    const ocr = ocrPool();
     try {
       const pdf = await task.promise;
       if (pdf.numPages > LIMITS.pages) throw new Error(`이 PDF는 ${pdf.numPages}쪽입니다. 최대 50쪽까지 지원하므로 필요한 부분을 별도 PDF로 저장해 주세요.`);
-      const blocks = [], empty = [], skipped = [];
+      const pages = [], jobs = []; let characters = 0, done = 0;
       for (let page = 1; page <= pdf.numPages; page++) {
         signal?.throwIfAborted(); progress(`PDF ${page} / ${pdf.numPages}쪽 읽는 중`);
         const source = await pdf.getPage(page); const content = await source.getTextContent();
-        let text = ''; let lastY;
-        for (const item of content.items) {
-          if (!('str' in item)) continue;
-          const y = item.transform[5];
-          if (lastY !== undefined && Math.abs(y - lastY) > 3) text += '\n';
-          text += item.str + (item.hasEOL ? '\n' : ' '); lastY = y;
-        }
+        const text = pdfPageText(content.items);
         const operations = await source.getOperatorList();
         const bounds = source.getViewport({scale:1});
         const scale = Math.min(2.5, 3600 / Math.max(bounds.width,bounds.height), Math.sqrt(8000000/(bounds.width*bounds.height)));
@@ -77,29 +85,44 @@ export async function readFile(file, progress = () => {}, signal) {
         // Scans get a full-page pass; pages with enough native text only read their large images.
         const scanned = text.trim() ? text.replace(/\s/g,'').length < 40 && images.length > 0 : operations.fnArray.length > 0;
         const regions = scanned ? [{}] : images.filter(i => i.pixels >= 250000).map(({rectangle}) => ({rectangle}));
+        characters += text.length;
+        if (characters > LIMITS.characters) throw new Error('본문은 160,000자까지 지원합니다.');
+        const entry = { page, text }; pages.push(entry);
         if (regions.length) {
-          progress(`한국어·영어 OCR · ${page} / ${pdf.numPages}쪽`);
+          progress(`한국어·영어 OCR 준비 · ${page} / ${pdf.numPages}쪽`);
+          // Render only once a worker is free, so at most one canvas per worker is held in memory.
+          const worker = await limited(ocr.acquire(), signal);
           const canvas = document.createElement('canvas');
           canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
-          try {
-            await source.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
-            worker ??= await createWorker('kor+eng',1,{workerPath:'/ocr/worker.min.js',corePath:'/ocr',langPath:'/ocr',workerBlobURL:false});
-            let found = '';
-            for (const options of regions) found += '\n' + (await limited(worker.recognize(canvas, options), signal, 60000)).data.text;
-            const native = text.replace(/\s/g,'');
-            for (const line of found.split(/\r?\n/)) {
-              if (line.trim() && !native.includes(line.replace(/\s/g,''))) text += '\n' + line;
-            }
-            if (found.trim()) recognized.push(page);
-          } catch (error) {
-            if (error.message !== OCR_TIMEOUT) throw error;
-            await worker.terminate(); worker = undefined; skipped.push(page);
-          } finally { canvas.width = canvas.height = 0; }
+          try { await source.render({canvasContext:canvas.getContext('2d'),viewport}).promise; }
+          catch (error) { ocr.release(worker); canvas.width = canvas.height = 0; throw error; }
+          const job = (async () => {
+            try {
+              let found = '';
+              for (const options of regions) found += '\n' + (await limited(worker.recognize(canvas, options), signal, 60000)).data.text;
+              ocr.release(worker); entry.found = found;
+            } catch (error) {
+              if (error.message !== OCR_TIMEOUT) throw error;
+              ocr.discard(worker); entry.skipped = true;
+            } finally { canvas.width = canvas.height = 0; progress(`한국어·영어 OCR · ${++done} / ${jobs.length}쪽 완료`); }
+          })();
+          job.catch(() => {}); jobs.push(job);
         }
-        if (!text.trim()) empty.push(page);
-        blocks.push(...blocksFromText(text, page, blocks.length)); source.cleanup();
-        if (blocks.reduce((n, b) => n + b.text.length, 0) > LIMITS.characters) throw new Error('본문은 160,000자까지 지원합니다.');
+        source.cleanup();
         await new Promise(r => setTimeout(r, 0));
+      }
+      await limited(Promise.all(jobs), signal);
+      const blocks = [], recognized = [], skipped = [], empty = [];
+      for (const { page, text: pageText, found, skipped: late } of pages) {
+        let text = pageText;
+        const native = text.replace(/\s/g,'');
+        for (const line of (found ?? '').split(/\r?\n/)) {
+          if (line.trim() && !native.includes(line.replace(/\s/g,''))) text += '\n' + line;
+        }
+        if (found?.trim()) recognized.push(page);
+        if (late) skipped.push(page);
+        if (!text.trim()) empty.push(page);
+        blocks.push(...blocksFromText(text, page, blocks.length));
       }
       const warnings = ['PDF 표의 열 순서와 줄바꿈은 원본과 다를 수 있습니다. 금액·기한·각주를 원본과 대조해 주세요.'];
       if (recognized.length) warnings.push('OCR 인식 쪽: '+recognized.join(', ')+'. 인식한 금액·기한·예외는 원본 이미지와 대조해 주세요.');
@@ -109,7 +132,7 @@ export async function readFile(file, progress = () => {}, signal) {
     } catch (error) {
       if (error.name === 'PasswordException') throw new Error('암호가 설정된 PDF는 지원하지 않습니다. 암호를 제거해 주세요.');
       throw error;
-    } finally { try { await worker?.terminate(); } finally { await task.destroy(); } }
+    } finally { try { await ocr.close(); } finally { await task.destroy(); } }
   }
   progress('문서 본문 읽는 중');
   const text = ext === 'hwp' ? await hwpText(await file.arrayBuffer()) : ['html', 'htm'].includes(ext) ? htmlText(await file.text()) : await file.text();
