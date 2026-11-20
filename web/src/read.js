@@ -83,6 +83,8 @@ export async function readFile(file, progress = () => {}, signal) {
         const viewport = source.getViewport({scale});
         const images = imageRegions(operations, viewport);
         // Scans get a full-page pass; pages with enough native text only read their large images.
+        // Under 40 characters is less than a sentence, so the page's content must be in its image layer.
+        // Images under 250,000 pixels (about 500×500) are logos and icons rather than text-bearing figures.
         const scanned = text.trim() ? text.replace(/\s/g,'').length < 40 && images.length > 0 : operations.fnArray.length > 0;
         const regions = scanned ? [{}] : images.filter(i => i.pixels >= 250000).map(({rectangle}) => ({rectangle}));
         characters += text.length;

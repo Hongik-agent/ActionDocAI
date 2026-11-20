@@ -75,11 +75,12 @@ async function run() {
     if(!['complete','cached'].includes(data.status))throw Error(data.status);
     $('ai-output').replaceChildren();
     for(const item of data.items){
-      const article=document.createElement('article'), p=document.createElement('p'), details=document.createElement('details'), summary=document.createElement('summary'),quote=document.createElement('blockquote');
-      p.textContent=item.statement;summary.textContent='원문 근거 · '+location(doc.blocks[item.index]);quote.textContent=item.quote;
-      details.append(summary,quote);article.append(p,details);$('ai-output').append(article);
+      const article=document.createElement('article'), p=document.createElement('p'), details=document.createElement('details'), summary=document.createElement('summary');
+      const cited=item.indexes.map(i=>doc.blocks[i]);
+      p.textContent=item.statement;summary.textContent='원문 근거 · '+cited.map(location).join(', ');
+      details.append(summary,...cited.map(block=>Object.assign(document.createElement('blockquote'),{textContent:block.text})));article.append(p,details);$('ai-output').append(article);
     }
-    job.items=data.items.map(({statement,quote,index})=>({statement,quote,block:doc.blocks[index]}));
+    job.items=data.items.map(({statement,indexes})=>({statement,blocks:indexes.map(i=>doc.blocks[i])}));
     $('ai-status').textContent=data.status==='cached'?'저장된 요약을 다시 표시했습니다. 무료 횟수는 차감되지 않습니다.':'AI 요약 완료 · 금액과 기한은 인용된 근거와 함께 확인해 주세요.';
   } catch(e) {if(job===current)$('ai-status').textContent=(messages[e.message]||messages.unavailable)+' 기본 정리를 확인해 주세요.';}
   finally {running=false;$('ai-run').disabled=!current;}

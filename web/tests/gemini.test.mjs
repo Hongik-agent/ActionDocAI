@@ -13,7 +13,7 @@ test('Gemini key stays in the provider header across summary and evidence audit'
     assert.ok(!JSON.stringify(body).includes(key));
   }});
   const text = '지원금은 300원입니다.';
-  const items = [{ statement: text, quote: text, index: 0 }];
+  const items = [{ statement: text, indexes: [0] }];
   let calls = 0;
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     assert.equal(new URL(url).origin, 'https://generativelanguage.googleapis.com');
@@ -34,7 +34,7 @@ test('a changed monetary unit is rejected before the second AI call',async t=>{
   let calls=0;
   t.mock.method(globalThis,'fetch',async()=>{
     calls++;
-    return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({items:[{index:0,quote:text,statement:'지원금은 최대 100억 원입니다.'}]})}]}}]});
+    return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({items:[{indexes:[0],statement:'지원금은 최대 100억 원입니다.'}]})}]}}]});
   });
   await assert.rejects(verifiedSummary([{text}],'전체 정리','test'),/numbers/);
   assert.equal(calls,1);

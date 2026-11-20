@@ -1,5 +1,6 @@
 import CFB from 'cfb';
 import { Inflate } from 'pako';
+import { LIMITS } from './summary.js';
 const SIGNATURE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
 const MAX_EXPANDED = 32 * 1024 * 1024;
 const invalid = () => new Error('HWP 본문을 읽지 못했습니다. 손상·보호 여부를 확인하거나 PDF·TXT로 다시 저장해 주세요.');
@@ -40,7 +41,7 @@ export function extractHwp(data) {
             if (i + 16 > at + size) throw invalid(); text += c === 9 ? '\t' : ' '; i += 14;
           } else if (c >= 32) text += String.fromCharCode(c);
         }
-        count += text.length; if (count > 160000) throw new Error('본문은 160,000자까지 지원합니다. 문서를 나누어 주세요.'); paragraphs.push(text);
+        count += text.length; if (count > LIMITS.characters) throw new Error('본문은 160,000자까지 지원합니다. 문서를 나누어 주세요.'); paragraphs.push(text);
       }
       at += size;
     }

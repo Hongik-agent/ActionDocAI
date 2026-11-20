@@ -34,19 +34,20 @@ test('notice headings group their answers and keep eligibility out of submission
   assert.deepEqual(sections.benefit.excerpts, [blocks[4], blocks[5], blocks[3]]);
 });
 test('business preview finds actionable facts beyond contents, damaged OCR and form labels', () => {
-  const blocks = blocksFromText('총연구비\n연구기간\n4. 신청방법 및 제출서류 · · · · 7\n5. 신청기간 및 신청 시 유의사항 · · · 10\n5. 신청기간 및 신청 시 유의사항 99980 10\n10. 문의처 · · · 22\n10. 문의처 Te ── | 인\n기관총괄담당자\n□ 지원기간 및 연구비 (정부출연금) 규모\n연구계획서와 동의서를 온라인으로 제출해야 합니다.\n신청 기한\n2027. 3. 20. 18:00까지\n문의처\n연구지원팀 02-0000-0000\n서류가 누락되면 심사 대상에서 제외됩니다.', 2);
+  // Contents entries repeated with arbitrary OCR debris, a word that merely contains '구비', and a prefixed contact label.
+  const blocks = blocksFromText('연구비 집행 계획\n사업기간\n4. 신청방법 및 제출서류 · · · · 7\n5. 접수기간 및 유의사항 · · · 10\n5. 접수기간 및 유의사항 %% 4 ;\n9. 문의처 · · · 21\n9. 문의처 Qx ≈≈ ]]\n사업총괄담당자\n□ 사업기간 및 사업비 (지자체 부담) 규모\n사업계획서와 확인서를 이메일로 제출해야 합니다.\n접수 마감\n2028. 6. 30. 17:00까지\n문의처\n정비지원과 031-000-0000\n서류가 빠지면 선정 대상에서 제외됩니다.', 3);
   const result = summarize({ ...source, blocks }, 'BUSINESS').sections;
-  for (const [i, expected] of ['연구계획서', '2027. 3. 20.', '02-0000-0000', '누락되면'].entries()) {
+  for (const [i, expected] of ['사업계획서', '2028. 6. 30.', '031-000-0000', '빠지면'].entries()) {
     assert.ok(result[i].excerpts[0].text.includes(expected));
-    assert.ok(result[i].evidence.every(b => !/총연구비|99980|Te ─|· · ·/.test(b.text)));
+    assert.ok(result[i].evidence.every(b => !/연구비|%%|≈≈|· · ·/.test(b.text)));
   }
 });
 test('saved report includes verified AI items with their evidence only when present', () => {
   const report = summarize(source, 'GENERAL');
   assert.ok(!reportMarkdown(report).includes('AI 상세 요약'));
-  const markdown = reportMarkdown(report, [{ statement: '교육비 50,000원을 지원합니다.', quote: '교육비 50,000원', block: source.blocks[1] }]);
+  const markdown = reportMarkdown(report, [{ statement: '교육비 50,000원을 지원합니다.', blocks: [source.blocks[1], source.blocks[2]] }]);
   assert.ok(markdown.indexOf('AI 상세 요약') < markdown.indexOf('무료 기본 정리'));
-  assert.ok(markdown.includes('- 교육비 50,000원을 지원합니다.\n  > 원문 근거 (본문 · b2): 교육비 50,000원'));
+  assert.ok(markdown.includes(`- 교육비 50,000원을 지원합니다.\n  > 원문 근거 (본문 · b2): ${source.blocks[1].text}\n  > 원문 근거 (본문 · b3): ${source.blocks[2].text}`));
 });
 test('PDF text keeps real word gaps, rejoins wrapped lines and keeps list items apart', () => {
   // One run per glyph group, positioned like pdf.js text content (font size 10, x/width in page units).
@@ -57,15 +58,19 @@ test('PDF text keeps real word gaps, rejoins wrapped lines and keeps list items 
     run('담당 부서에 회신합니다.', 0, 760),
     run('□ 신청기간: 2026. 5. 11.', 0, 740, 585),
     run('○ 신청방법: 온라인', 0, 720),
-    run('청년도전지원사업 12p', 0, 700, 585), run('청년일경험지원 14p', 0, 680)
+    // A contents page: titles on the left, page references aligned to the right margin.
+    run('교육 지원 안내', 0, 700), run('3', 575, 700, 10), run('신청 서류 목록', 0, 680), run('7', 575, 680, 10),
+    // A table row reaching the margin does not continue into the next row either.
+    run('구분', 0, 660, 40), run('금액', 300, 660, 40), run('비고', 545, 660, 40), run('일반', 0, 640, 40)
   ]);
   assert.deepEqual(text.split('\n'), ['사업명: 지원사업', '(필수) 동의서를 서명 후 스캔 또는 사진파일로 제출하고, 담당 부서에 회신합니다.',
-    '□ 신청기간: 2026. 5. 11.', '○ 신청방법: 온라인', '청년도전지원사업 12p', '청년일경험지원 14p']);
+    '□ 신청기간: 2026. 5. 11.', '○ 신청방법: 온라인', '교육 지원 안내 3', '신청 서류 목록 7', '구분 금액 비고', '일반']);
 });
 test('excerpts skip bare headings, prefer labelled values and do not read amounts as dates', () => {
-  const blocks = blocksFromText('1 사업개요\n□ 주요내용\n□ 사업명: 청년 이자 지원사업\n□ 모집인원: 60명\n- 보증금(2.5억원 이하)의 90% 범위에서 최대 1억원까지 가능\n□ 신청기간: 2026. 5. 11.(월) 10:00 ~ 29.(금) 18:00\n계약 월세액 0 271,000원 541,000원 812,000원\n- 지원금리: 연 3.5%');
+  const blocks = blocksFromText('1 개요\n□ 세부사항\n□ 사업명: 마을 정비 지원\n□ 모집인원: 15곳\n- 공사비(3.2억원 이하)의 80% 범위에서 최대 5천만원까지 가능\n□ 접수기간: 2027. 4. 1.(목) 09:00 ~ 15.(목) 17:00\n구분 1단계 120,000원 240,000원 360,000원\n- 자부담금: 1곳당 500,000원\n지원금은 1곳 100만원, 2곳 150만원, 3곳 200만원입니다.');
   const sections = Object.fromEntries(summarize({ ...source, blocks }, 'GENERAL').sections.map(s => [s.id, s.excerpts.map(b => b.text)]));
-  assert.deepEqual(sections.purpose, ['□ 사업명: 청년 이자 지원사업', '□ 모집인원: 60명']);
-  assert.deepEqual(sections.date, ['□ 신청기간: 2026. 5. 11.(월) 10:00 ~ 29.(금) 18:00']);
-  assert.equal(sections.cost[0], '- 지원금리: 연 3.5%');
+  assert.deepEqual(sections.purpose, ['□ 사업명: 마을 정비 지원', '□ 모집인원: 15곳']);
+  assert.deepEqual(sections.date, ['□ 접수기간: 2027. 4. 1.(목) 09:00 ~ 15.(목) 17:00']);
+  // A row of amounts without labels is left out; a sentence listing several amounts is not a table row.
+  assert.deepEqual(sections.cost, ['- 자부담금: 1곳당 500,000원', '지원금은 1곳 100만원, 2곳 150만원, 3곳 200만원입니다.']);
 });

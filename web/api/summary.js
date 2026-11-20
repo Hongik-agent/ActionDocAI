@@ -3,8 +3,9 @@ import {defaultGeminiModel, geminiKey} from '../server/gemini.js';
 import {createHash} from 'node:crypto';
 import {createClient} from '@supabase/supabase-js';
 import {verifiedSummary,checkEvidence} from '../server/verify.js';
+import {PURPOSES} from '../src/summary.js';
 export const config={maxDuration:120};
-const labels={GENERAL:'전체 정리',BUSINESS:'공문·업무 요청',SUPPORT:'지원사업·모집 공고',CONTRACT:'요금·계약 안내'};
+const labels=Object.fromEntries(Object.entries(PURPOSES).map(([id,[label]])=>[id,label]));
 export default async function summary(req,res) {
   res.setHeader('Cache-Control','private, no-store');
   if(req.method!=='POST') return res.status(405).end();
@@ -23,15 +24,15 @@ export default async function summary(req,res) {
     const model = gemini ? process.env.GEMINI_MODEL || defaultGeminiModel : process.env.OPENAI_MODEL || 'gpt-4.1-mini';
     if(!gemini && !process.env.OPENAI_API_KEY) throw Error('configuration');
     const source=blocks.map(({text,page})=>({text,page}));
-    const f=createHash('sha256').update(JSON.stringify([3,gemini ? 'gemini' : 'openai',model,purpose,pages,source])).digest('hex');
+    const f=createHash('sha256').update(JSON.stringify([4,gemini ? 'gemini' : 'openai',model,purpose,pages,source])).digest('hex');
     const limit=(key,fallback)=>{const n=Number(process.env[key]??fallback);if(!Number.isSafeInteger(n)||n<0||n>100000) throw Error('limit');return n;};
     const reservation=await db.rpc('actiondoc_reserve',{u:user.id,f,personal:limit('USER_DAILY_LIMIT',3),total:limit('GLOBAL_DAILY_LIMIT',30)});
     if(reservation.error) throw Error('quota');
     const slot=reservation.data;
-    if(slot.status==='cached') return res.json({status:'cached',items:checkEvidence(slot.result.map(({statement,index,start,length})=>({statement,index,quote:source[index].text.slice(start,start+length)})),source)});
+    if(slot.status==='cached') return res.json({status:'cached',items:checkEvidence(slot.result,source)});
     if(slot.status!=='reserved') return res.json({status:['personal','global','busy'].includes(slot.status)?slot.status:'unavailable'});
     const items=await verifiedSummary(source,labels[purpose],model);
-    const saved=await db.from('actiondoc_jobs').update({result:items.map(({statement,index,quote})=>({statement,index,start:source[index].text.indexOf(quote),length:quote.length}))}).eq('job',slot.job).eq('owner',user.id);
+    const saved=await db.from('actiondoc_jobs').update({result:items}).eq('job',slot.job).eq('owner',user.id);
     if(saved.error) throw Error('cache');
     return res.json({status:'complete',items});
   } catch (err) {

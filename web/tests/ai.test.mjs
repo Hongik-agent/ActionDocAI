@@ -4,21 +4,36 @@ import {readFile} from 'node:fs/promises';
 import {PGlite} from '@electric-sql/pglite';
 import {checkEvidence} from '../server/verify.js';
 
-test('evidence must exist in the cited block and retain numbers and units',()=>{
+test('evidence must cite existing blocks whose text supports every number',()=>{
   const blocks=[{text:'다만 신규 신청자의 지원금은 최대 50만원이다.'}];
-  const item={index:0,quote:blocks[0].text,statement:'신규 신청자의 한도는 50만원이다.'};
+  const item={indexes:[0],statement:'신규 신청자의 한도는 50만원이다.'};
   assert.deepEqual(checkEvidence([item],blocks),[item]);
-  for(const changed of [{index:1},{quote:'다른 사업'},{statement:'한도는 50억원이다.'},{statement:'지원금은 500만원이다.'}])
+  for(const changed of [{indexes:[1]},{indexes:[]},{indexes:[0,0,0,0]},{indexes:[0.5]},{statement:'한도는 50억원이다.'},{statement:'지원금은 500만원이다.'}])
     assert.throws(()=>checkEvidence([{...item,...changed}],blocks));
 });
 
+test('numbers compare by value and attached unit, whatever their spelling',()=>{
+  const check=(sources,statement)=>checkEvidence([{indexes:sources.map((_,i)=>i),statement}],sources.map(text=>({text})));
+  for(const [sources,statement] of [
+    [['신청기간: 2026. 5. 11.(월) 10:00 ~ 29.(금) 18:00'],'신청은 2026년 5월 11일 10시부터 5월 29일 18시까지입니다.'],
+    [['접수: 2026.5.11~2026.5.29'],'2026년 5월 11일부터 29일까지 접수합니다.'],
+    [['지원 대상: 만 19세~39세'],'만 19~39세가 대상입니다.'],
+    [['교육비 최대 50만 원'],'교육비를 최대 500,000원 지원합니다.'],
+    [['모집인원: 60명','신청 마감: 3월 20일'],'60명을 3월 20일까지 모집합니다.']
+  ]) assert.equal(check(sources,statement)[0].statement,statement);
+  for(const [sources,statement] of [
+    [['계약 기간은 3년입니다.'],'계약 기간은 3개월입니다.'],
+    [['신청기간: 2026. 5. 11.'],'신청은 2026년 6월 11일부터입니다.'],
+    [['모집인원: 60명'],'60명을 3월 20일까지 모집합니다.']
+  ]) assert.throws(()=>check(sources,statement),/numbers/);
+});
+
 test('verification failures report position and digit-masked units without document text',()=>{
-  const blocks=[{text:'지원 대상은 만 19세~39세 청년입니다.'},{text:'신청은 17:00까지 받습니다.'}];
+  const blocks=[{text:'지원 대상은 만 19세~39세 청년입니다.'}];
   const detail=fn=>{try{fn();}catch(e){return [e.message,e.detail];}};
-  assert.deepEqual(detail(()=>checkEvidence([{index:0,quote:'만 19세~39세',statement:'만 19~39세 청년이 대상입니다.'}],blocks)),['numbers',{item:0,missing:['N']}]);
-  assert.deepEqual(detail(()=>checkEvidence([{index:0,quote:blocks[0].text,statement:'대상 청년'},{index:0,quote:'17:00까지',statement:'마감'}],blocks)),['evidence',{item:1,reason:'other_block'}]);
-  assert.deepEqual(detail(()=>checkEvidence([{index:0,quote:'만 20세',statement:'대상'}],blocks)),['evidence',{item:0,reason:'not_in_source'}]);
-  assert.ok(!JSON.stringify(detail(()=>checkEvidence([{index:0,quote:'만 19세~39세',statement:'만 19~39세'}],blocks))).includes('19'));
+  assert.deepEqual(detail(()=>checkEvidence([{indexes:[0],statement:'만 20~39세 청년이 대상입니다.'}],blocks)),['numbers',{item:0,missing:['N']}]);
+  assert.deepEqual(detail(()=>checkEvidence([{indexes:[0],statement:'대상'},{indexes:[3],statement:'마감'}],blocks)),['evidence',{item:1,reason:'indexes'}]);
+  assert.ok(!JSON.stringify(detail(()=>checkEvidence([{indexes:[0],statement:'만 20~39세'}],blocks))).includes('20'));
 });
 
 test('one reservation per concurrent document, account cache survives exhausted budgets, quotas reset by day',async()=>{
@@ -101,7 +116,7 @@ test('global counter survives account deletion and migration, with no double cha
 });
 
 test('amount verification preserves magnitude, currency and sign despite spaces',()=>{
-  const check=(quote,statement)=>checkEvidence([{index:0,quote,statement}],[{text:quote}]);
+  const check=(quote,statement)=>checkEvidence([{indexes:[0],statement}],[{text:quote}]);
   for(const [quote,statement] of [
     ['지원금 100만 원입니다.','지원금 100억 원입니다.'],
     ['지원금 100만 원입니다.','지원금 100원입니다.'],
