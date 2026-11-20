@@ -12,6 +12,15 @@ test('evidence must exist in the cited block and retain numbers and units',()=>{
     assert.throws(()=>checkEvidence([{...item,...changed}],blocks));
 });
 
+test('verification failures report position and digit-masked units without document text',()=>{
+  const blocks=[{text:'지원 대상은 만 19세~39세 청년입니다.'},{text:'신청은 17:00까지 받습니다.'}];
+  const detail=fn=>{try{fn();}catch(e){return [e.message,e.detail];}};
+  assert.deepEqual(detail(()=>checkEvidence([{index:0,quote:'만 19세~39세',statement:'만 19~39세 청년이 대상입니다.'}],blocks)),['numbers',{item:0,missing:['N']}]);
+  assert.deepEqual(detail(()=>checkEvidence([{index:0,quote:blocks[0].text,statement:'대상 청년'},{index:0,quote:'17:00까지',statement:'마감'}],blocks)),['evidence',{item:1,reason:'other_block'}]);
+  assert.deepEqual(detail(()=>checkEvidence([{index:0,quote:'만 20세',statement:'대상'}],blocks)),['evidence',{item:0,reason:'not_in_source'}]);
+  assert.ok(!JSON.stringify(detail(()=>checkEvidence([{index:0,quote:'만 19세~39세',statement:'만 19~39세'}],blocks))).includes('19'));
+});
+
 test('one reservation per concurrent document, account cache survives exhausted budgets, quotas reset by day',async()=>{
   const db=new PGlite();
   try{

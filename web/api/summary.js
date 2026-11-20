@@ -36,6 +36,6 @@ export default async function summary(req,res) {
     return res.json({status:'complete',items});
   } catch (err) {
     const status=summaryFailure(err);
-    console.error('Summary failed',status);
+    console.error('Summary failed',status,status==='verification' ? JSON.stringify({stage:err.message,...err.detail}) : '');
     return res.status(503).json({status}); }
 }
