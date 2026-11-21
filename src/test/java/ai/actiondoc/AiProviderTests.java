@@ -18,7 +18,7 @@ class AiProviderTests {
     static final String AGE="만 25세 ~ 44세 무주택 가구주가 대상입니다.";
     static final String REGION="가나시 거주 또는 전입예정자가 대상입니다.";
     static final String INCOME="본인 연소득 4천만원 이하, 맞벌이는 가구합산 7천만원 이하이며 세전 기준입니다.";
-    static final String PERIOD="신청기간: 2099. 6. 2. 09:00 ~ 6. 26. 17:00";
+    static final String PERIOD="신청기간: 2099. 6. 2. 09:00 ~ 26. 17:00";
     Document document()throws Exception{return new DocumentService().normalize(null,String.join("\n",AGE,REGION,INCOME,PERIOD));}
     ObjectNode extraction(){
         var out=json.createObjectNode();var facts=out.putArray("facts");

@@ -95,6 +95,12 @@ class ActionDocTests {
         // Document numbers are not dates.
         assertNull(AnalysisService.extractDate("가나시 공고 제2027-1234호"));
     }
+    @Test void noticeHeaderAndClosingLinesAreNotTasks() throws Exception {
+        var lines=List.of("다라군 공고 제2028-345호","2028년 다라군 소상공인 경영 지원사업 참여자 모집 공고","다라군 소상공인 경영 지원사업 참여자를 다음과 같이 공고합니다.","많은 신청 바랍니다.","2028. 2. 10.","다라군수");
+        var doc=documents.normalize(null,String.join("\n",lines)+"\n2028년 3월 15일까지 신청서를 제출해 주세요.");
+        var quotes=analyzer.analyze(doc,"","local",false).findings().stream().map(Finding::quote).toList();
+        assertEquals(List.of("2028년 3월 15일까지 신청서를 제출해 주세요."),quotes);
+    }
     @Test void applicationWindowNeedsAFullRangeAndAcceptsEveryTildeMark() {
         assertNull(DateWindow.parse("가나시 공고 제2027-1234호"));
         assertNull(DateWindow.parse("접수기간: 2027년 4월 1일부터"));
@@ -102,6 +108,9 @@ class ActionDocTests {
             var range=DateWindow.parse("접수기간: 2028. 4. 1.(토) 09:00 "+mark+" 4. 14.(금) 18:00");
             assertNotNull(range,mark);assertEquals(java.time.LocalDate.of(2028,4,1),range.start());assertEquals(java.time.LocalDate.of(2028,4,14),range.end());
         }
+        // A day-only end keeps the start's year and month.
+        var dayOnly=DateWindow.parse("접수기간: 2028년 5월 8일 〜 19일");
+        assertEquals(java.time.LocalDate.of(2028,5,19),dayOnly.end());
         var full=DateWindow.parse("모집기간: 2027년 12월 28일 ～ 2028년 1월 3일");
         assertEquals(java.time.LocalDate.of(2028,1,3),full.end());
     }
