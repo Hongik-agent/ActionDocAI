@@ -13,7 +13,7 @@ test('Gemini key stays in the provider header across summary and evidence audit'
     assert.ok(!JSON.stringify(body).includes(key));
   }});
   const text = '지원금은 300원입니다.';
-  const items = [{ section: '지원 내용', statement: text, indexes: [0] }];
+  const items = [{ kind: 'detail', section: '지원 내용', statement: text, indexes: [0] }];
   let calls = 0;
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     assert.equal(new URL(url).origin, 'https://generativelanguage.googleapis.com');
@@ -24,6 +24,7 @@ test('Gemini key stays in the provider header across summary and evidence audit'
       const schema = JSON.parse(options.body).generationConfig.responseJsonSchema.properties.items;
       assert.equal(schema.maxItems, undefined);
       assert.deepEqual(schema.items.properties.indexes, { type: 'array', items: { type: 'integer', minimum: 0, maximum: 0 }, minItems: 1 });
+      assert.deepEqual(schema.items.properties.kind, { type: 'string', enum: ['overview', 'action', 'detail'] });
     }
     const reply = calls++ === 0 ? { items } : { unsupported: [] };
     return Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(reply) }] } }] });
@@ -78,7 +79,7 @@ test('the audit removes only the items it rejects, and fails only when it reject
   t.after(() => { if (old === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = old; });
   t.mock.method(console, 'info', () => {});
   const blocks = [{ text: '지원 대상: 만 19세~39세' }, { text: '신청 기간: 2027. 3. 1. ~ 3. 20.' }];
-  const items = [{ section: '대상', statement: '만 19~39세가 대상입니다.', indexes: [0] }, { section: '일정', statement: '2027년 3월 1일부터 신청합니다.', indexes: [1] }];
+  const items = [{ kind: 'overview', section: '', statement: '만 19~39세가 대상입니다.', indexes: [0] }, { kind: 'action', section: '', statement: '2027년 3월 1일부터 신청합니다.', indexes: [1] }];
   const run = unsupported => {
     let calls = 0;
     const mock = t.mock.method(globalThis, 'fetch', async () => Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(calls++ === 0 ? { items } : { unsupported }) }] } }] }));

@@ -7,7 +7,7 @@ import {checkEvidence} from '../server/verify.js';
 test('evidence must cite existing blocks whose text supports every number',()=>{
   const blocks=[{text:'다만 신규 신청자의 지원금은 최대 50만원이다.'}];
   const item={indexes:[0],statement:'신규 신청자의 한도는 50만원이다.'};
-  assert.deepEqual(checkEvidence([item],blocks),[{section:'',...item}]);
+  assert.deepEqual(checkEvidence([item],blocks),[{kind:'detail',section:'',...item}]);
   for(const changed of [{indexes:[1]},{indexes:[]},{indexes:[0,-1]},{indexes:[0.5]},{statement:'한도는 50억원이다.'},{statement:'지원금은 500만원이다.'}])
     assert.throws(()=>checkEvidence([{...item,...changed}],blocks));
 });
@@ -25,7 +25,7 @@ test('unsupported statements are dropped with content-free reasons, and only an 
   const detail=fn=>{try{fn();}catch(e){return [e.message,e.detail];}};
   // One bad statement no longer discards the verified ones.
   const kept=checkEvidence([{indexes:[0,0,1],statement:'만 19~39세 청년이 대상입니다.'},{indexes:[0,99],statement:'대상'},{indexes:[0],statement:'만 20~39세'}],blocks);
-  assert.deepEqual(kept,[{section:'',indexes:[0,1],statement:'만 19~39세 청년이 대상입니다.'}]);
+  assert.deepEqual(kept,[{kind:'detail',section:'',indexes:[0,1],statement:'만 19~39세 청년이 대상입니다.'}]);
   assert.match(logs.join('\n'),/dropped.*"item":1,"reason":"indexes_range".*"stage":"numbers","item":2,"missing":\["N"\]/);
   assert.ok(!logs.join('\n').includes('20'));
   assert.deepEqual(detail(()=>checkEvidence([{indexes:[0],statement:'만 20~39세 청년'}],blocks)),['numbers',{item:0,missing:['N'],dropped:1}]);
@@ -33,6 +33,8 @@ test('unsupported statements are dropped with content-free reasons, and only an 
   // The model decides how many items and how much evidence a document needs.
   assert.equal(checkEvidence(Array(12).fill({section:'대상',indexes:[0,1,2,3,4,5,6,7,8,9],statement:'대상'}),blocks).length,12);
   assert.deepEqual(detail(()=>checkEvidence([],blocks)),['items',{count:0}]);
+  // Items come in three kinds; anything else is dropped like any other unsupported item.
+  assert.deepEqual(checkEvidence([{kind:'overview',indexes:[0],statement:'청년 대상 안내입니다.'},{kind:'action',indexes:[1],statement:'신청서를 제출합니다.'},{kind:'headline',indexes:[0],statement:'대상'}],blocks).map(i=>i.kind),['overview','action']);
 });
 
 test('one reservation per concurrent document, account cache survives exhausted budgets, quotas reset by day',async()=>{

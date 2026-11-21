@@ -1,5 +1,5 @@
 import {copyControl,sectionText,reportText} from './copy.js';
-import {aiItems,aiNodes,initializeAi,resetAi} from './ai.js';
+import {aiItems,aiView,aiSignedIn,initializeAi,promptLogin,requestAi,resetAi} from './ai.js';
 import { SAMPLE_TEXT, SAMPLE_AI } from './sample.js';
 import { PURPOSES, blocksFromText, validateDocument, summarize, location, reportMarkdown } from './summary.js';
 import { readFile } from './read.js';
@@ -23,7 +23,7 @@ function choose(file) {
 }
 function setBusy(value) {
   busy = value; $('pdf-options').disabled = value;
-  for (const id of ['summarize', 'file', 'file-tab', 'text-tab', 'document-text', 'purpose', 'sample', 'remove-file']) $(id).disabled = value;
+  for (const id of ['summarize', 'ai-direct', 'file', 'file-tab', 'text-tab', 'document-text', 'purpose', 'sample', 'remove-file']) $(id).disabled = value;
   $('summarize').textContent = value ? '문서를 읽고 있어요…' : '문서 정리하기 →'; $('cancel').hidden = !value;
 }
 function evidence(block) { const el = node('div', 'evidence'); el.append(node('span', 'location', location(block)), node('div', '', block.text)); return el; }
@@ -63,7 +63,7 @@ function trySample() {
   if (busy) return; invalidate();
   const doc = validateDocument({ name: '체험용 샘플 · 지역기업 성장지원 사업 안내', pages: 0, blocks: blocksFromText(SAMPLE_TEXT), warnings: ['기능 체험용 가상 문서입니다. 실제 지원사업 공고가 아닙니다.'] });
   showDocument(doc);
-  $('ai-example-items').replaceChildren(...aiNodes(SAMPLE_AI.map(item => ({ ...item, blocks: item.indexes.map(i => doc.blocks[i]) }))));
+  $('ai-example-items').replaceChildren(...aiView(SAMPLE_AI.map(item => ({ ...item, blocks: item.indexes.map(i => doc.blocks[i]) }))));
   $('ai-example').hidden = false;
   $('progress').textContent = '샘플 정리 완료 · 선택한 파일과 입력한 본문은 유지됩니다.';
 }
@@ -72,10 +72,10 @@ $('purpose').onchange = () => { $('purpose-hint').textContent = PURPOSES[$('purp
 for (const type of ['dragover', 'dragleave', 'drop']) $('dropzone').addEventListener(type, event => {
   event.preventDefault(); $('dropzone').classList.toggle('drag', type === 'dragover'); if (type === 'drop') choose(event.dataTransfer.files[0]);
 });
-$('summarize').onclick = async () => {
-  if (busy) return; invalidate();
-  if (mode === 'file' && !selected) { error('정리할 파일을 선택해 주세요.'); return; }
-  if (mode === 'text' && !$('document-text').value.trim()) { error('정리할 본문을 입력해 주세요.'); return; }
+// Reads the selected file or pasted text in the browser and shows the basic summary; returns the document or null.
+async function readDocument() {
+  if (mode === 'file' && !selected) { error('정리할 파일을 선택해 주세요.'); return null; }
+  if (mode === 'text' && !$('document-text').value.trim()) { error('정리할 본문을 입력해 주세요.'); return null; }
   setBusy(true); $('progress').textContent = '본문과 원문 위치를 읽고 있어요…';
   try {
     reading = new AbortController();
@@ -85,8 +85,16 @@ $('summarize').onclick = async () => {
       fast: $('pdf-fast').checked
     }) : validateDocument({ name: '붙여넣은 안내문', pages: 0, blocks: blocksFromText($('document-text').value), warnings: [] });
     showDocument(doc); $('progress').textContent = '정리 완료 · 문서를 서버로 전송하지 않았습니다.';
-  } catch (reason) { error(reason.message || '문서를 읽지 못했습니다. 형식과 손상 여부를 확인해 주세요.'); $('progress').textContent = ''; }
+    return doc;
+  } catch (reason) { error(reason.message || '문서를 읽지 못했습니다. 형식과 손상 여부를 확인해 주세요.'); $('progress').textContent = ''; return null; }
   finally { setBusy(false); }
+}
+$('summarize').onclick = async () => { if (busy) return; invalidate(); await readDocument(); };
+// One click: check sign-in first so nothing is read in vain, then read the document and hand it to the AI summary.
+$('ai-direct').onclick = async () => {
+  if (busy) return; invalidate();
+  if (!(await aiSignedIn())) { promptLogin(); return; }
+  if (await readDocument()) requestAi();
 };
 $('cancel').onclick = () => reading?.abort(new Error('문서 읽기를 취소했습니다.'));
 $('download').onclick = () => {

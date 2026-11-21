@@ -19,6 +19,10 @@ try {
   assert.match(await page.locator('.compare').innerText(), /문서 전송[\s\S]*없음/);
   await page.waitForSelector('#ai-example:not([hidden])');
   assert.match(await page.locator('#ai-example').innerText(), /AI 상세 요약 예시[\s\S]*500,000원/);
+  // The AI result leads with a glance and the to-dos; per-section details stay folded below.
+  assert.match(await page.locator('#ai-example').innerText(), /한눈에 보기[\s\S]*해야 할 일[\s\S]*2027년 3월 20일까지 신청서와 사업자등록증[\s\S]*자세히 보기/);
+  // Without an AI configuration there is no one-click AI button.
+  assert.equal(await page.locator('#ai-direct').isVisible(), false);
   await page.waitForSelector('#results:not([hidden])');
   assert.match(await page.locator('#sections').innerText(), /500,000원/);
   assert.match(await page.locator('#sections').innerText(), /다른 지원금을 받은 기업은 제외/);
@@ -117,6 +121,17 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: '/private/tmp/actiondoc-web-mobile.png', fullPage: true });
+  // With AI configured but no sign-in, the one-click button asks for sign-in before reading anything.
+  const visitor = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await visitor.route('**/api/config', route => route.fulfill({ json: { enabled: true, provider: 'Google Gemini', url: 'https://example.supabase.co', publicKey: 'public-anon-key' } }));
+  await visitor.goto('http://127.0.0.1:4184/');
+  await visitor.waitForSelector('#ai-direct:not([hidden])');
+  await visitor.getByRole('tab', { name: '텍스트 붙여넣기' }).click();
+  await visitor.fill('#document-text', '지원 대상: 지역 중소기업\n신청 기한: 2027년 3월 20일까지');
+  await visitor.click('#ai-direct');
+  await visitor.waitForFunction(() => document.getElementById('ai-status').textContent.includes('로그인'));
+  assert.equal(await visitor.locator('#results').isVisible(), false);
+  await visitor.close();
   assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(postRequests, []);
-  console.log('PASS: text/HTML/HWP/PDF, 50 pages and selected pages of a 484-page PDF, mixed PDF warning, image-region OCR, parallel OCR page order, OCR cancel, evidence export, no script execution or external requests, mobile layout');
+  console.log('PASS: text/HTML/HWP/PDF, 50 pages and selected pages of a 484-page PDF, mixed PDF warning, image-region OCR, parallel OCR page order, OCR cancel, one-click AI asks for sign-in first, AI glance/to-do layout, evidence export, no script execution or external requests, mobile layout');
 } finally { if (browser) await browser.close(); server.kill(); }

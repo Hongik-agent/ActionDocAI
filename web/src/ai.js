@@ -2,7 +2,7 @@ import {copyControl,aiText} from './copy.js';
 import {createClient} from '@supabase/supabase-js';
 import {location} from './summary.js';
 const $=id=>document.getElementById(id);
-let client, current, running=false;
+let client, current, running=false, pending=false;
 const messages={
   length:'무료 AI는 본문 10,000자·PDF 10쪽까지 지원합니다.',
   personal:'오늘 이 계정의 무료 AI 한도에 도달했습니다.',
@@ -19,10 +19,14 @@ const messages={
   storage:'사용량 확인 또는 요약 저장에 실패했습니다. 잠시 후 다시 이용해 주세요.',
   login:'AI 요약은 로그인이 필요합니다.'
 };
+const KIND_TITLES={overview:'한눈에 보기',action:'해야 할 일'};
+// Saving and copying read as one list: the glance and the to-dos first, then the detailed sections.
+const exportItems=items=>['overview','action','detail'].flatMap(kind=>items.filter(i=>(i.kind??'detail')===kind).map(i=>({...i,section:KIND_TITLES[kind]??i.section})));
+const tooLarge=doc=>doc.pages>10||doc.characters>10000;
 // Verified items of the current document only; reset with it.
-export const aiItems=()=>current?.items??[];
+export const aiItems=()=>exportItems(current?.items??[]);
 export function resetAi(doc=null,purpose=null) {
-  current=doc?{doc,purpose}:null;
+  current=doc?{doc,purpose}:null; pending=false;
   $('ai-output').replaceChildren(); $('ai-consent').checked=false; $('ai-status').textContent='';
   $('ai-run').disabled=running||!doc; $('ai-hint').hidden=!!doc;
 }
@@ -42,6 +46,36 @@ export function aiNodes(items) {
     group.prepend(header);
   }
   return [...groups.values()];
+}
+// The glance and the to-dos stay open; the per-section details are folded unless they are all there is.
+export function aiView(items) {
+  const of=kind=>items.filter(i=>(i.kind??'detail')===kind), make=(tag,props={})=>Object.assign(document.createElement(tag),props), nodes=[];
+  const evidence=list=>{
+    const blocks=[...new Map(list.flatMap(i=>i.blocks).map(b=>[b.id,b])).values()], d=make('details');
+    d.append(make('summary',{textContent:'원문 근거 · '+blocks.map(location).join(', ')}),...blocks.map(b=>make('blockquote',{textContent:b.text})));return d;
+  };
+  const overview=of('overview'), actions=of('action'), details=of('detail');
+  if(overview.length){const s=make('section',{className:'ai-overview'});s.append(make('h3',{textContent:KIND_TITLES.overview}),make('p',{textContent:overview.map(i=>i.statement).join(' ')}),evidence(overview));nodes.push(s);}
+  if(actions.length){
+    const s=make('section',{className:'ai-actions'}), list=make('ul');
+    list.append(...actions.map(i=>{const li=make('li');li.append(make('span',{textContent:i.statement}),evidence([i]));return li;}));
+    s.append(make('h3',{textContent:KIND_TITLES.action}),list);nodes.push(s);
+  }
+  if(details.length){const d=make('details',{className:'ai-details',open:!nodes.length});d.append(make('summary',{textContent:`자세히 보기 · ${details.length}개 항목`}),...aiNodes(details));nodes.push(d);}
+  return nodes;
+}
+export async function aiSignedIn() { return Boolean(client && (await client.auth.getSession()).data.session); }
+export function promptLogin() {
+  $('ai-status').textContent='AI 요약은 Google 로그인이 필요합니다. 아래 버튼으로 로그인해 주세요.';
+  $('ai-panel').scrollIntoView({behavior:'smooth',block:'center'});
+}
+// Called after the document is read: runs at once if consent is given, otherwise starts as soon as it is ticked.
+export function requestAi() {
+  if(!current) return;
+  if(tooLarge(current.doc)){$('ai-status').textContent=messages.length+' 기본 정리를 확인해 주세요.';$('ai-panel').scrollIntoView({behavior:'smooth',block:'center'});return;}
+  if($('ai-consent').checked) return run();
+  pending=true;$('ai-status').textContent='아래 동의 항목에 체크하면 바로 AI 요약을 시작합니다.';
+  $('ai-panel').scrollIntoView({behavior:'smooth',block:'center'});$('ai-consent').focus({preventScroll:true});
 }
 export async function initializeAi() {
   try {
@@ -74,12 +108,14 @@ export async function initializeAi() {
       finally { $('ai-delete').disabled=false; }
     };
     $('ai-run').onclick=run;
+    $('ai-consent').onchange=()=>{if(pending&&$('ai-consent').checked){pending=false;run();}};
+    $('ai-direct').hidden=!config.enabled;
   } catch { /* Local basic summary remains available. */ }
 }
 async function run() {
   if(!current||running)return;
   const job=current, {doc,purpose}=job;
-  if(doc.pages>10||doc.characters>10000){$('ai-status').textContent=messages.length+' 기본 정리를 확인해 주세요.';return;}
+  if(tooLarge(doc)){$('ai-status').textContent=messages.length+' 기본 정리를 확인해 주세요.';return;}
   if(!$('ai-consent').checked){$('ai-status').textContent='본문 전송과 요약 저장에 동의해 주세요.';return;}
   running=true;$('ai-run').disabled=true;
   $('ai-status').textContent='AI가 요약하고 원문을 대조하고 있습니다…';
@@ -91,8 +127,8 @@ async function run() {
     const data=await response.json();
     if(job!==current)return;
     if(!['complete','cached'].includes(data.status))throw Error(data.status);
-    job.items=data.items.map(({section,statement,indexes})=>({section,statement,blocks:indexes.map(i=>doc.blocks[i])}));
-    $('ai-output').replaceChildren(copyControl(()=>aiText(job.items),'AI 전체 복사','AI 상세 요약 전체 복사'),...aiNodes(job.items));
+    job.items=data.items.map(({kind,section,statement,indexes})=>({kind,section,statement,blocks:indexes.map(i=>doc.blocks[i])}));
+    $('ai-output').replaceChildren(copyControl(()=>aiText(exportItems(job.items)),'AI 전체 복사','AI 상세 요약 전체 복사'),...aiView(job.items));
     $('ai-status').textContent=data.status==='cached'?'저장된 요약을 다시 표시했습니다. 무료 횟수는 차감되지 않습니다.':'AI 요약 완료 · 금액과 기한은 인용된 근거와 함께 확인해 주세요.';
   } catch(e) {if(job===current)$('ai-status').textContent=(messages[e.message]||messages.unavailable)+' 기본 정리를 확인해 주세요.';}
   finally {running=false;$('ai-run').disabled=!current;}
