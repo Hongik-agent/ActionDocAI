@@ -10,7 +10,6 @@ import org.apache.pdfbox.pdmodel.*;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.rendering.*;
-import org.apache.pdfbox.text.PDFTextStripper;
 
 /** PDFBox stays on the caller thread; only detached page images enter the OCR workers. */
 final class PdfPagePipeline {
@@ -20,7 +19,6 @@ final class PdfPagePipeline {
     static void read(PDDocument pdf,OcrService ocr,Consumer<Page> consume,Consumer<Models.DocumentProgress> progress) throws IOException {
         var workers=Executors.newFixedThreadPool(MAX_IN_FLIGHT,r->{var thread=new Thread(r,"actiondoc-pdf-ocr");thread.setDaemon(true);return thread;});
         var pending=new ArrayDeque<Future<Page>>();
-        var stripper=new PDFTextStripper();stripper.setSortByPosition(true);
         var renderer=new PDFRenderer(pdf);renderer.setSubsamplingAllowed(true);
         int pages=pdf.getNumberOfPages(),completed=0;
         long started=System.nanoTime();
@@ -32,8 +30,7 @@ final class PdfPagePipeline {
                     progress.accept(state(++completed,pages));
                 }
                 if(System.nanoTime()-started>Duration.ofMinutes(8).toNanos())throw timeout();
-                stripper.setStartPage(number);stripper.setEndPage(number);
-                String text=stripper.getText(pdf);
+                String text=PdfLines.join(LayoutTextStripper.lines(pdf,number));
                 PDPage page=pdf.getPage(number-1);
                 List<String> links=links(page);
                 boolean needsOcr=text.isBlank() || hasLargeImage(page.getResources(),0);
