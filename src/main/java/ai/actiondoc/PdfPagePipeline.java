@@ -111,6 +111,7 @@ final class PdfPagePipeline {
         }
         return List.copyOf(result);
     }
+    // Pixels at 245+ are paper white; about one dark pixel per 100,000 (at least 10) is scanner noise, not content.
     private static boolean isBlank(BufferedImage image) {
         long dark=0,limit=Math.max(10,(long)image.getWidth()*image.getHeight()/100000);
         var raster=image.getRaster();

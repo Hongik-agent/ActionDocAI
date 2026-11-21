@@ -70,9 +70,9 @@ class ActionDocTests {
         Analysis a=analyzer.analyze(documents.normalize(null,"할인 신청이 필요 없습니다. 자동 적용됩니다."),"","local",false);
         assertTrue(a.findings().stream().noneMatch(f->f.category().equals("action")));
     }
-    @Test void allLongDocumentBlocksAreCovered() {
-        List<Block> blocks=new ArrayList<>();for(int i=0;i<60;i++)blocks.add(new Block("b"+i,1,"가".repeat(1800)));
-        List<Block> covered=AnalysisService.chunk(blocks).stream().flatMap(List::stream).toList();assertEquals(blocks,covered);
+    @Test void localSummaryReadsTheWholeDocumentInOnePass() throws Exception {
+        var doc=documents.normalize(null,(("가".repeat(1700))+"\n").repeat(60));
+        assertEquals(1,analyzer.analyze(doc,"","local",false).chunks());
     }
     @Test void longLocalReportKeepsAllEvidenceWithoutDumpingItIntoBody() throws Exception {
         StringBuilder source=new StringBuilder();
@@ -92,6 +92,18 @@ class ActionDocTests {
         assertNull(AnalysisService.extractDate("11월 25일까지"));assertNull(AnalysisService.extractDate("2026년 2월 30일까지"));
         assertNull(AnalysisService.extractDate("2026-11-25 또는 2026-12-01"));
         assertNull(AnalysisService.deadline("2026년 12월 1일부터 적용됩니다."));
+        // Document numbers are not dates.
+        assertNull(AnalysisService.extractDate("가나시 공고 제2027-1234호"));
+    }
+    @Test void applicationWindowNeedsAFullRangeAndAcceptsEveryTildeMark() {
+        assertNull(DateWindow.parse("가나시 공고 제2027-1234호"));
+        assertNull(DateWindow.parse("접수기간: 2027년 4월 1일부터"));
+        for(String mark:List.of("~","∼","～","〜")) {
+            var range=DateWindow.parse("접수기간: 2028. 4. 1.(토) 09:00 "+mark+" 4. 14.(금) 18:00");
+            assertNotNull(range,mark);assertEquals(java.time.LocalDate.of(2028,4,1),range.start());assertEquals(java.time.LocalDate.of(2028,4,14),range.end());
+        }
+        var full=DateWindow.parse("모집기간: 2027년 12월 28일 ～ 2028년 1월 3일");
+        assertEquals(java.time.LocalDate.of(2028,1,3),full.end());
     }
     @Test void approvalIdempotencyStatusAndPersistence() throws Exception {
         var path=temporary.resolve("tasks.db");var store=new TaskStore(path.toString());

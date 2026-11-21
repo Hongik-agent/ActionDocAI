@@ -5,7 +5,7 @@ import org.junit.jupiter.api.*;
 import org.springframework.mock.web.MockMultipartFile;
 
 class PdfPerformanceTests {
-    @Test void optionalRealPdfTiming() throws Exception {
+    @Test void optionalRealPdfReadsAndGetsTheBasicSummary() throws Exception {
         String path=System.getProperty("actiondoc.pdfBenchmark");
         Assumptions.assumeTrue(path!=null);
         var ocr=new OcrService(){
@@ -24,5 +24,7 @@ class PdfPerformanceTests {
         String output=System.getProperty("actiondoc.pdfBenchmarkOutput");
         if(output!=null)Files.writeString(Path.of(output),new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(doc));
         Assertions.assertFalse(doc.blocks().isEmpty());
+        var analyzer=new AnalysisService(new com.fasterxml.jackson.databind.ObjectMapper());
+        for(String purpose:BasicSummary.PURPOSE_TITLES.keySet())LocalSummaryTests.assertMatchesBasicSummary(doc,analyzer.analyze(doc,"","local",false,purpose),purpose);
     }
 }

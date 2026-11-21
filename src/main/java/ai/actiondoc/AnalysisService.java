@@ -46,7 +46,7 @@ public class AnalysisService {
         }
         List<String> warnings=new ArrayList<>(doc.warnings());
         if(!context.isBlank())warnings.add("추가 정보는 개인별 자격 충족 판정에 사용하지 않았습니다. 해당 조건을 원문과 대조해 주세요.");
-        return new Analysis(UUID.randomUUID().toString(),doc.id(),doc.name(),"local",findings.isEmpty()?"NEEDS_REVIEW":"REVIEW_TASKS",List.copyOf(findings),List.of(),List.copyOf(warnings),chunk(doc.blocks()).size(),Instant.now().toString(),"GENERAL",
+        return new Analysis(UUID.randomUUID().toString(),doc.id(),doc.name(),"local",findings.isEmpty()?"NEEDS_REVIEW":"REVIEW_TASKS",List.copyOf(findings),List.of(),List.copyOf(warnings),1,Instant.now().toString(),"GENERAL",
             "원문 문장을 찾아 항목별로 발췌한 무료 기본 정리입니다. 문맥을 새로 쓰는 AI 요약이나 개인별 자격 판단은 아닙니다.",List.copyOf(sections),"UNKNOWN");
     }
     static String bounded(String text, int max) { if (text.length() > max) throw new IllegalArgumentException("분석 응답이 허용 길이를 초과했습니다. 다시 분석해 주세요."); return text; }
@@ -57,13 +57,4 @@ public class AnalysisService {
         catch (DateTimeException e) { return null; }
     }
     static String deadline(String text) { return text.matches(".*(까지|마감|기한|납부일).*?") ? extractDate(text) : null; }
-    static List<List<Block>> chunk(List<Block> blocks) {
-        List<List<Block>> chunks = new ArrayList<>(); List<Block> current = new ArrayList<>(); int size = 0;
-        for (Block b : blocks) {
-            if (!current.isEmpty() && size + b.text().length() > 7500) { chunks.add(List.copyOf(current)); current.clear(); size = 0; }
-            current.add(b); size += b.text().length();
-        }
-        if (!current.isEmpty()) chunks.add(List.copyOf(current));
-        return chunks;
-    }
 }
