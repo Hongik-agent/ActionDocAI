@@ -24,17 +24,5 @@
 #ai-direct{width:100%;margin-top:10px;padding:13px 15px;font-size:13px;color:var(--blue);border-color:#c9d4f3}
 .ai-overview{background:#f3f6ff;border:1px solid #dce4fb;border-radius:12px;padding:16px 18px}.ai-overview p{font-size:15px;line-height:1.8;margin:8px 0}.ai-actions{margin-top:20px}.ai-actions ul{margin:8px 0 0;padding-left:20px}.ai-actions li{margin:8px 0}.ai-details{margin-top:20px}.ai-details>summary{cursor:pointer;font-weight:600;padding:6px 0}
 
-.workspace{gap:24px}
-.workspace .hero{margin:0}
-.workspace .intro{margin:0}
-.workspace .guide{padding-top:20px}
-@media(min-width:901px){
-  .workspace{grid-template-columns:minmax(0,1fr) minmax(0,1.28fr);grid-template-rows:auto 1fr;column-gap:clamp(32px,5vw,68px);row-gap:0}
-  .workspace .hero{grid-column:1;grid-row:1;padding-top:12px}
-  .workspace .input-panel{grid-column:2;grid-row:1 / 3;min-width:0}
-  .workspace .guide{grid-column:1;grid-row:2;margin-top:24px;border-top:1px solid #e0e6f0}
-}
-@media(max-width:900px){
-  .workspace{grid-template-columns:minmax(0,1fr)}
-  main{padding-top:28px}
-}
+main:has(> .hero){padding-top:32px}
+@media(max-width:740px){main:has(> .hero){padding-top:22px}}
