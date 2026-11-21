@@ -23,7 +23,7 @@ function choose(file) {
 }
 function setBusy(value) {
   busy = value; $('pdf-options').disabled = value;
-  for (const id of ['summarize', 'file', 'file-tab', 'text-tab', 'document-text', 'purpose', 'sample', 'hero-sample', 'remove-file']) $(id).disabled = value;
+  for (const id of ['summarize', 'file', 'file-tab', 'text-tab', 'document-text', 'purpose', 'sample', 'remove-file']) $(id).disabled = value;
   $('summarize').textContent = value ? '문서를 읽고 있어요…' : '문서 정리하기 →'; $('cancel').hidden = !value;
 }
 function evidence(block) { const el = node('div', 'evidence'); el.append(node('span', 'location', location(block)), node('div', '', block.text)); return el; }
@@ -67,7 +67,7 @@ function trySample() {
   $('ai-example').hidden = false;
   $('progress').textContent = '샘플 정리 완료 · 선택한 파일과 입력한 본문은 유지됩니다.';
 }
-$('sample').onclick = trySample; $('hero-sample').onclick = trySample;
+$('sample').onclick = trySample;
 $('purpose').onchange = () => { $('purpose-hint').textContent = PURPOSES[$('purpose').value][1]; invalidate(); };
 for (const type of ['dragover', 'dragleave', 'drop']) $('dropzone').addEventListener(type, event => {
   event.preventDefault(); $('dropzone').classList.toggle('drag', type === 'dragover'); if (type === 'drop') choose(event.dataTransfer.files[0]);
