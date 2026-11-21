@@ -1,4 +1,4 @@
-export const LIMITS = Object.freeze({ fileBytes: 50 * 1024 * 1024, pages: 50, characters: 160000 });
+export const LIMITS = Object.freeze({ fileBytes: 50 * 1024 * 1024, pages: 50, longPdfCharacters: 4000000, characters: 160000 });
 export const PURPOSES = {
   GENERAL: ['전체 정리', '주요 내용과 기한·금액·예외를 함께 확인합니다.'],
   BUSINESS: ['공문·업무 요청', '요청 사항, 제출 자료, 기한과 담당 부서를 확인합니다.'],
@@ -78,7 +78,7 @@ export const pdfPageText = items => joinLines(pdfLines(items));
 export function validateDocument(document) {
   const size = document.blocks.reduce((sum, b) => sum + b.text.length, 0);
   if (!size) throw new Error('읽을 수 있는 본문이 없습니다. 원본 상태를 확인하거나 텍스트를 붙여넣어 주세요.');
-  if (size > LIMITS.characters) throw new Error('본문은 160,000자까지 지원합니다. 문서를 나누어 입력해 주세요.');
+  if (size > (document.longPdf ? LIMITS.longPdfCharacters : LIMITS.characters)) throw new Error('본문은 160,000자까지 지원합니다. 문서를 나누어 입력해 주세요.');
   return { ...document, characters: size };
 }
 // A notice often puts the label on one PDF line and the answer on the next.

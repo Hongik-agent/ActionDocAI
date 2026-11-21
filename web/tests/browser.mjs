@@ -41,12 +41,12 @@ try {
   await page.waitForSelector("#source .evidence");
   const excerpt = await page.locator('#source').textContent();
   assert.match(excerpt,/Page 484:/); assert.doesNotMatch(excerpt,/Page 479:/);
-  const exported = page.waitForEvent('download');
-  await page.click('#pdf-markdown');
-  const md = await readFile(await (await exported).path(), 'utf8');
-  assert.equal(md.match(/^## [0-9]+쪽$/gm).length, 484);
-  assert.match(md, /Page 1:/);
-  assert.match(md, /Page 484:/);
+  await page.fill('#pdf-start',''); await page.click('#summarize');
+  await page.waitForSelector('#results:not([hidden])');
+  assert.match(await page.locator('#warnings').innerText(), /전체 484쪽을 읽어/);
+  await page.locator('.source-panel summary').click();
+  await page.waitForSelector('#source .evidence');
+  assert.match(await page.locator('#source').textContent(), /Page 484:/);
   await page.fill('#pdf-start','400'); await page.fill('#pdf-end','484'); await page.click('#summarize');
   await page.waitForSelector("#error:not([hidden])");
   assert.match(await page.locator('#error').innerText(), /1~50쪽/);

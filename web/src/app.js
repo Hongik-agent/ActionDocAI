@@ -18,7 +18,7 @@ function choose(file) {
   if (!/\.(pdf|hwp|html?|txt|md)$/i.test(file.name)) { error('PDF·HWP·HTML·TXT·MD 파일을 선택해 주세요. HWPX는 지원하지 않습니다.'); return; }
   selected = file; invalidate();
   $('pdf-options').hidden = !/\.pdf$/i.test(file.name);
-  $('pdf-start').value = '1'; $('pdf-end').value = ''; $('pdf-fast').checked = false;
+  $('pdf-start').value = ''; $('pdf-end').value = ''; $('pdf-fast').checked = false;
   $('file-label').textContent = file.name; $('remove-file').hidden = false;
 }
 function setBusy(value) {
@@ -42,13 +42,13 @@ function render(doc) {
     else if (!section.excerpts.length) card.append(node('p', 'missing', '조건·예외를 중간에 자르지 않도록 긴 항목은 아래 원문 근거에서 확인합니다.'));
     if (section.evidence.length) {
       const details = node('details'); details.append(node('summary', '', `전체 원문 근거 ${section.evidence.length}곳 · 발췌 ${section.excerpts.length}개`));
-      details.addEventListener('toggle', () => { if (details.open && details.children.length === 1) details.append(...section.evidence.map(evidence)); }); card.append(details);
+      details.addEventListener('toggle', () => { if (details.open && details.children.length === 1) { for (const block of section.evidence) details.append(evidence(block)); } }); card.append(details);
     }
     $('sections').append(card);
   }
   $('source').replaceChildren();
   const sourceDetails = $('source').parentElement; sourceDetails.open = false;
-  sourceDetails.ontoggle = () => { if (sourceDetails.open && !$('source').children.length) $('source').append(...doc.blocks.map(evidence)); };
+  sourceDetails.ontoggle = () => { if (sourceDetails.open && !$('source').children.length) { for (const block of doc.blocks) $('source').append(evidence(block)); } };
   $('results').hidden = false; $('results').focus({ preventScroll: true }); $('results').scrollIntoView({ behavior: 'smooth' });
 }
 $('file-tab').onclick = () => setMode('file'); $('text-tab').onclick = () => setMode('text');
@@ -77,7 +77,7 @@ $('summarize').onclick = async () => {
   try {
     reading = new AbortController();
     const doc = mode === 'file' ? await readFile(selected, value => { $('progress').textContent = value; }, reading.signal, {
-      start: $('pdf-start').valueAsNumber,
+      start: $('pdf-start').value || $('pdf-start').validity.badInput ? $('pdf-start').valueAsNumber : null,
       end: $('pdf-end').value || $('pdf-end').validity.badInput ? $('pdf-end').valueAsNumber : null,
       fast: $('pdf-fast').checked
     }) : validateDocument({ name: '붙여넣은 안내문', pages: 0, blocks: blocksFromText($('document-text').value), warnings: [] });
@@ -98,23 +98,4 @@ function saveBlob(blob, filename) {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-$('pdf-markdown').onclick = async () => {
-  if (busy || !selected) return;
-  setBusy(true);
-  $('error').hidden = true;
-  $('progress').textContent = 'PDF 전체 변환을 준비하고 있어요…';
-  reading = new AbortController();
-  try {
-    const blob = await readFile(selected, message => { $('progress').textContent = message; }, reading.signal, {
-      wholeMarkdown: true, fast: $('pdf-fast').checked
-    });
-    saveBlob(blob, selected.name.replace(/\.pdf$/i, '.md'));
-    $('progress').textContent = 'PDF 전체 본문을 변환해 다운로드를 시작했습니다.';
-  } catch (reason) {
-    error(reason.message || 'PDF 전체 변환에 실패했습니다.');
-    $('progress').textContent = '';
-  } finally {
-    setBusy(false);
-  }
-};
 void initializeAi();

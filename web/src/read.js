@@ -79,16 +79,17 @@ export async function readFile(file, progress = () => {}, signal, options = {}) 
     const ocr = ocrPool();
     try {
       const pdf = await task.promise;
-      const markdown = options.wholeMarkdown;
-      const parts = markdown ? ['# PDF 전체 본문\n', options.fast ? '\n이미지 속 글자는 제외했습니다.\n' : '\n이미지 속 글자는 OCR로 인식했습니다. 금액과 기한은 원본을 확인하세요.\n'] : [];
-      const start = markdown ? 1 : options.start ?? 1;
+      const markdown = pdf.numPages > LIMITS.pages && options.start == null && options.end == null;
+      const start = options.start ?? 1;
       const end = markdown ? pdf.numPages : options.end ?? Math.min(pdf.numPages, start + LIMITS.pages - 1);
+      const blocks = [], recognized = [], skipped = [], empty = [];
+      let longCharacters = 0;
       if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > pdf.numPages || (!markdown && end - start >= LIMITS.pages)) {
         throw new Error(`전체 ${pdf.numPages}쪽 중 연속된 1~50쪽을 선택해 주세요. 시작 쪽과 끝 쪽을 확인해 주세요.`);
       }
       const pages = [], jobs = []; let characters = 0, done = 0;
       for (let page = start; page <= end; page++) {
-        signal?.throwIfAborted(); progress(`PDF 원본 ${page}쪽 (선택 ${start}–${end}쪽) 읽는 중`);
+        signal?.throwIfAborted(); progress(`${markdown ? "전체 PDF 정리 ·" : "PDF"} 원본 ${page}쪽 (선택 ${start}–${end}쪽) 읽는 중`);
         const source = await pdf.getPage(page); const content = await source.getTextContent();
         const text = pdfPageText(content.items);
         characters += text.length;
@@ -132,10 +133,16 @@ export async function readFile(file, progress = () => {}, signal, options = {}) 
           await limited(Promise.all(jobs), signal);
           for (const item of pages) {
             const body = pageBody(item);
-            parts.push(new Blob([`\n## ${item.page}쪽\n\n`,
-              item.skipped ? '> OCR 시간 초과 · 이미지 내용을 원본에서 확인하세요.\n\n' : '',
-              body.trim() ? body.replace(/^/gm, '    ') : '> 읽을 수 있는 텍스트가 없습니다.',
-              '\n']));
+            // Encode page boundaries separately from indented source lines, including Markdown-like input.
+            const section = [`## ${item.page}쪽`, ...body.split(/\r?\n/).map(line => '    ' + line)].join('\n');
+            const [heading, ...lines] = section.split('\n');
+            const pageNumber = Number(heading.slice(3, -1));
+            longCharacters += body.length;
+            if (longCharacters > LIMITS.longPdfCharacters) throw new Error('전체 본문이 4,000,000자를 넘습니다. 필요한 쪽 범위를 지정해 주세요.');
+            for (const block of blocksFromText(lines.map(line => line.slice(4)).join('\n'), pageNumber, blocks.length)) blocks.push(block);
+            if (!body.trim()) empty.push(item.page);
+            if (item.skipped) skipped.push(item.page);
+            if (item.found?.trim()) recognized.push(item.page);
           }
           pages.length = jobs.length = done = 0;
         }
@@ -143,8 +150,6 @@ export async function readFile(file, progress = () => {}, signal, options = {}) 
       }
       await limited(Promise.all(jobs), signal);
       signal?.throwIfAborted();
-      if (markdown) return new Blob(parts, {type: 'text/markdown;charset=utf-8'});
-      const blocks = [], recognized = [], skipped = [], empty = [];
       for (const { page, text: pageText, found, skipped: late } of pages) {
         const text = pageBody({text:pageText, found});
         if (found?.trim()) recognized.push(page);
@@ -153,6 +158,7 @@ export async function readFile(file, progress = () => {}, signal, options = {}) 
         blocks.push(...blocksFromText(text, page, blocks.length));
       }
       const warnings = ['PDF 표의 열 순서와 줄바꿈은 원본과 다를 수 있습니다. 금액·기한·각주를 원본과 대조해 주세요.'];
+      if (markdown) warnings.unshift(`전체 ${pdf.numPages}쪽을 읽어 목적별로 정리했습니다.`);
       if (recognized.length) warnings.push('OCR 인식 쪽: '+recognized.join(', ')+'. 인식한 금액·기한·예외는 원본 이미지와 대조해 주세요.');
       if (skipped.length) warnings.push(`OCR 시간이 초과되어 문자 인식을 건너뛴 쪽: ${skipped.join(', ')}. 이 쪽의 이미지 속 내용은 원본에서 확인해 주세요.`);
       if (empty.length) warnings.push(`텍스트를 읽지 못한 쪽: ${empty.join(', ')}. 빈 쪽 또는 이미지·스캔일 수 있으며 이 쪽의 내용은 결과에 포함되지 않았습니다.`);
@@ -161,7 +167,7 @@ export async function readFile(file, progress = () => {}, signal, options = {}) 
         if (!blocks.length) throw new Error('선택한 범위에 추출 가능한 텍스트가 없습니다. 빠르게 읽기를 해제하고 OCR로 다시 정리해 주세요.');
         warnings.push('빠르게 읽기로 이미지 속 글자는 제외했습니다.');
       }
-      const doc = validateDocument({ name: file.name, pages: end - start + 1, blocks, warnings });
+      const doc = validateDocument({ name: file.name, pages: end - start + 1, blocks, warnings, longPdf: markdown });
       return { ...doc, startPage: start };
     } catch (error) {
       if (error.name === 'PasswordException') throw new Error('암호가 설정된 PDF는 지원하지 않습니다. 암호를 제거해 주세요.');
