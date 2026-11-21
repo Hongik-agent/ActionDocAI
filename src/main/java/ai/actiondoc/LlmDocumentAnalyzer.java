@@ -26,7 +26,7 @@ final class LlmDocumentAnalyzer {
                 var evidence=sourceEvidence(item.path("evidence"),part);
                 if(evidence.isEmpty()){warnings.add("원문 인용을 검증하지 못한 추출 항목을 제외했습니다. 누락 가능성이 있어 원문을 확인해 주세요.");continue;}
                 String statement=bounded(item.path("statement").asText(),900),category=item.path("category").asText();
-                if(!CATEGORIES.contains(category)||statement.isBlank()||!numbersSupported(statement,evidence)){warnings.add("숫자 또는 분류를 검증하지 못한 추출 항목을 제외했습니다.");continue;}
+                if(!CATEGORIES.contains(category)||statement.isBlank()||!NumberCheck.supported(statement,evidence)){warnings.add("숫자 또는 분류를 검증하지 못한 추출 항목을 제외했습니다.");continue;}
                 facts.add(new ExtractedFact("f"+(facts.size()+1),category,bounded(item.path("topic").asText(),100),statement,evidence));
             }
             if(facts.size()>240)throw new IllegalArgumentException("조건이 240개를 초과합니다. 누락을 막기 위해 문서를 나누어 분석해 주세요.");
@@ -40,24 +40,24 @@ final class LlmDocumentAnalyzer {
         for(var fact:facts)candidates.add(new Candidate("fact-"+fact.id(),"fact",fact.statement(),fact.evidence(),fact.topic(),"","","",""));
         dependencies.put("overview",factIds(synthesis.path("overviewFactIds")));
         var overview=references(synthesis.path("overviewFactIds"),index);String overviewText=bounded(synthesis.path("overview").asText(),700);
-        if(!overview.isEmpty()&&numbersSupported(overviewText,overview))candidates.add(new Candidate("overview","overview",overviewText,overview,"","","","",""));
+        if(!overview.isEmpty()&&NumberCheck.supported(overviewText,overview))candidates.add(new Candidate("overview","overview",overviewText,overview,"","","","",""));
         Set<String> ids=new HashSet<>();ids.add("overview");for(var fact:facts)ids.add("fact-"+fact.id());
         for(var item:synthesis.path("sections")){
             String id=id(item,ids);dependencies.put(id,factIds(item.path("factIds")));String body=bounded(item.path("body").asText(),900);var evidence=references(item.path("factIds"),index);
-            if(!evidence.isEmpty()&&numbersSupported(item.path("title").asText()+" "+body,evidence))candidates.add(new Candidate(id,"section",body,evidence,bounded(item.path("title").asText(),100),"","","",""));
+            if(!evidence.isEmpty()&&NumberCheck.supported(item.path("title").asText()+" "+body,evidence))candidates.add(new Candidate(id,"section",body,evidence,bounded(item.path("title").asText(),100),"","","",""));
             else warnings.add("근거를 검증하지 못한 요약 항목을 제외했습니다.");
         }
         if(!context.isBlank())for(var item:synthesis.path("personalChecks")){
             String id=id(item,ids);dependencies.put(id,factIds(item.path("factIds")));String status=item.path("status").asText(),quote=item.path("profileQuote").asText(),reason=bounded(item.path("reason").asText(),700);var evidence=references(item.path("factIds"),index);
             if(!STATUSES.contains(status)||evidence.isEmpty()||(!quote.isEmpty()&&!context.contains(quote))||(!Set.of("UNKNOWN","IRRELEVANT").contains(status)&&quote.isBlank())){warnings.add("사용자 입력 또는 원문 근거를 확인하지 못한 조건 비교를 제외했습니다.");continue;}
-            if(!numbersSupported(reason+" "+item.path("criterion").asText(),combineProfile(evidence,quote))){warnings.add("조건 비교의 숫자 근거를 확인하지 못했습니다.");continue;}
+            if(!NumberCheck.supported(reason+" "+item.path("criterion").asText(),combineProfile(evidence,quote))){warnings.add("조건 비교의 숫자 근거를 확인하지 못했습니다.");continue;}
             candidates.add(new Candidate(id,"check",reason,evidence,bounded(item.path("criterion").asText(),100),status,quote,"",""));
         }
         boolean mismatch=candidates.stream().anyMatch(c->c.kind.equals("check")&&c.status.equals("MISMATCH"));
         boolean unknown=candidates.stream().anyMatch(c->c.kind.equals("check")&&c.status.equals("UNKNOWN"));
         for(var item:synthesis.path("actions")){
             String id=id(item,ids);dependencies.put(id,factIds(item.path("factIds")));String kind=item.path("kind").asText(),body=bounded(item.path("detail").asText(),900),title=bounded(item.path("title").asText(),120);var evidence=references(item.path("factIds"),index);
-            if(!Set.of("CHECK","PREPARE","APPLY").contains(kind)||evidence.isEmpty()||!numbersSupported(title+" "+body,evidence))continue;
+            if(!Set.of("CHECK","PREPARE","APPLY").contains(kind)||evidence.isEmpty()||!NumberCheck.supported(title+" "+body,evidence))continue;
             if((periodStatus.equals("CLOSED")&&!kind.equals("CHECK"))||(mismatch&&!kind.equals("CHECK"))||((unknown||(!context.isBlank()&&candidates.stream().noneMatch(c->c.kind.equals("check")))||!warnings.isEmpty())&&kind.equals("APPLY"))){warnings.add("마감·불일치·미확인 조건 때문에 신청 또는 준비 작업 제안을 보류했습니다.");continue;}
             String date=item.path("deadline").isNull()?null:item.path("deadline").asText();if(date!=null&&!supportedDeadline(date,evidence)){date=null;warnings.add("작업 기한의 원문 근거가 불확실해 자동 기한을 비웠습니다.");}
             if(date!=null&&LocalDate.parse(date).isBefore(LocalDate.now(ZoneId.of("Asia/Seoul")))){if(!kind.equals("CHECK")){warnings.add("기한이 지난 신청·준비 작업을 제외했습니다.");continue;}date=null;}
@@ -99,9 +99,6 @@ final class LlmDocumentAnalyzer {
     private static List<String> factIds(JsonNode nodes){List<String> ids=new ArrayList<>();for(var node:nodes)ids.add(node.asText());return List.copyOf(ids);}
     private static List<Evidence> references(JsonNode ids,Map<String,ExtractedFact> index){if(!ids.isArray()||ids.isEmpty())return List.of();Map<String,Evidence> out=new LinkedHashMap<>();for(var id:ids){var fact=index.get(id.asText());if(fact==null)return List.of();for(var e:fact.evidence())out.put(e.blockId()+"\n"+e.quote(),e);}return List.copyOf(out.values());}
     private static List<Evidence> combineProfile(List<Evidence> evidence,String profile){var list=new ArrayList<>(evidence);list.add(new Evidence("user",0,profile));return list;}
-    static boolean numbersSupported(String text,List<Evidence> evidence){String all=evidence.stream().map(Evidence::quote).reduce("",(a,b)->a+" "+b);Set<String> source=numbers(all);return source.containsAll(numbers(text))&&units(all).containsAll(units(text));}
-    private static Set<String> units(String text){Set<String> out=new HashSet<>();Matcher m=Pattern.compile("(\\d+(?:,\\d{3})*(?:\\.\\d+)?)\\s*([억천백만]*원|%|세|개월|㎡|명|대)").matcher(text);while(m.find()){try{out.add(new java.math.BigDecimal(m.group(1).replace(",","")).stripTrailingZeros().toPlainString()+m.group(2));}catch(Exception ignored){}}return out;}
-    private static Set<String> numbers(String text){Set<String> out=new HashSet<>();Matcher m=Pattern.compile("\\d+(?:[.,]\\d+)*").matcher(text);while(m.find()){try{out.add(new java.math.BigDecimal(m.group().replace(",","")).stripTrailingZeros().toPlainString());}catch(Exception ignored){}}return out;}
     static boolean supportedDeadline(String date,List<Evidence> evidence){try{LocalDate.parse(date);}catch(Exception e){return false;}for(var e:evidence){if(date.equals(AnalysisService.deadline(e.quote())))return true;var window=NoticeReport.DateWindow.parse(e.quote());if(window!=null&&date.equals(window.end().toString()))return true;}return false;}
     static String periodStatus(Document doc){for(var block:doc.blocks()){String text=block.text().replaceAll("\\s+","");if(text.matches(".*(신청기간|접수기간|모집기간).*")){var window=NoticeReport.DateWindow.parse(block.text());if(window!=null){var today=LocalDate.now(ZoneId.of("Asia/Seoul"));return today.isAfter(window.end())?"CLOSED":today.isBefore(window.start())?"UPCOMING":"OPEN";}}}return "UNKNOWN";}
     private JsonNode call(String name,String instructions,Object input,String schema){

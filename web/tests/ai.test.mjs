@@ -12,20 +12,11 @@ test('evidence must cite existing blocks whose text supports every number',()=>{
     assert.throws(()=>checkEvidence([{...item,...changed}],blocks));
 });
 
-test('numbers compare by value and attached unit, whatever their spelling',()=>{
-  const check=(sources,statement)=>checkEvidence([{indexes:sources.map((_,i)=>i),statement}],sources.map(text=>({text})));
-  for(const [sources,statement] of [
-    [['신청기간: 2026. 5. 11.(월) 10:00 ~ 29.(금) 18:00'],'신청은 2026년 5월 11일 10시부터 5월 29일 18시까지입니다.'],
-    [['접수: 2026.5.11~2026.5.29'],'2026년 5월 11일부터 29일까지 접수합니다.'],
-    [['지원 대상: 만 19세~39세'],'만 19~39세가 대상입니다.'],
-    [['교육비 최대 50만 원'],'교육비를 최대 500,000원 지원합니다.'],
-    [['모집인원: 60명','신청 마감: 3월 20일'],'60명을 3월 20일까지 모집합니다.']
-  ]) assert.equal(check(sources,statement)[0].statement,statement);
-  for(const [sources,statement] of [
-    [['계약 기간은 3년입니다.'],'계약 기간은 3개월입니다.'],
-    [['신청기간: 2026. 5. 11.'],'신청은 2026년 6월 11일부터입니다.'],
-    [['모집인원: 60명'],'60명을 3월 20일까지 모집합니다.']
-  ]) assert.throws(()=>check(sources,statement),/numbers/);
+test('numbers compare by value, attached unit, magnitude, currency and sign, whatever their spelling',async()=>{
+  const {accept,reject}=JSON.parse(await readFile(new URL('../../shared/fixtures/numbers.json',import.meta.url)));
+  const check=({sources,statement})=>checkEvidence([{indexes:sources.map((_,i)=>i),statement}],sources.map(text=>({text})));
+  for(const c of accept) assert.equal(check(c)[0].statement,c.statement);
+  for(const c of reject) assert.throws(()=>check(c),/numbers/);
 });
 
 test('unsupported statements are dropped with content-free reasons, and only an empty result fails',t=>{
@@ -123,27 +114,3 @@ test('global counter survives account deletion and migration, with no double cha
   } finally { await db.close(); }
 });
 
-test('amount verification preserves magnitude, currency and sign despite spaces',()=>{
-  const check=(quote,statement)=>checkEvidence([{indexes:[0],statement}],[{text:quote}]);
-  for(const [quote,statement] of [
-    ['지원금 100만 원입니다.','지원금 100억 원입니다.'],
-    ['지원금 100만 원입니다.','지원금 100원입니다.'],
-    ['지원금 100원입니다.','지원금 100만 원입니다.'],
-    ['지원금 1억 5천만 원입니다.','지원금 1억 5백만 원입니다.'],
-    ['지원금 1.5억 원입니다.','지원금 1.5만 원입니다.'],
-    ['지원금 100달러입니다.','지원금 100원입니다.'],
-    ['지원금 $100입니다.','지원금 ₩100입니다.'],
-    ['정산액 -100원입니다.','정산액 100원입니다.'],
-    ['지원금 100만원입니다.','지원금 100만 원이며 수수료는 50원입니다.'],
-    ['지원율 50%입니다.','지원율 50원입니다.']
-  ]) assert.throws(()=>check(quote,statement),/numbers/);
-  for(const [quote,statement] of [
-    ['지원금 100만원입니다.','지원금 100만 원입니다.'],
-    ['지원금 100만 원입니다.','지원금 100만원입니다.'],
-    ['지원금 1억 5천만 원입니다.','지원금 1 억 5 천 만 원입니다.'],
-    ['지원금 1,000,000원입니다.','지원금 1000000 원입니다.'],
-    ['지원금 1.5억 원입니다.','지원금 1.5억원입니다.'],
-    ['지원율 ５０％입니다.','지원율 50%입니다.'],
-    ['접수는 2026. 11. 20. 18:00까지입니다.','접수는 2026. 11. 20. 18:00까지입니다.']
-  ]) assert.equal(check(quote,statement)[0].statement,statement);
-});
