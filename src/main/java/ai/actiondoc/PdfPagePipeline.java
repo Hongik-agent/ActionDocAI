@@ -31,7 +31,11 @@ final class PdfPagePipeline {
                 String text=PdfLines.join(LayoutTextStripper.lines(pdf,number));
                 PDPage page=pdf.getPage(number-1);
                 List<String> links=links(page);
-                var images=ImageRegions.find(page);
+                var bounds=page.getCropBox();
+                double width=Math.max(1,bounds.getWidth()),height=Math.max(1,bounds.getHeight());
+                float scale=(float)Math.min(200.0/72.0,Math.min(4096.0/Math.max(width,height),Math.sqrt(10_000_000.0/(width*height))));
+                // Under 16 rendered pixels is a spacer, bullet or rule, too small to hold readable text.
+                var images=ImageRegions.find(page).stream().filter(region->region.width()*scale>=16 && region.height()*scale>=16).toList();
                 // Under 40 characters is less than a sentence, so the page's content must be in its image layer.
                 boolean scanned=text.isBlank() || text.replaceAll("\\s","").length()<40 && !images.isEmpty();
                 // Images under 250,000 pixels (about 500×500) are logos and icons rather than text-bearing figures.
@@ -40,23 +44,21 @@ final class PdfPagePipeline {
                     pending.add(CompletableFuture.completedFuture(new Page(number,text,links,null,false)));
                     continue;
                 }
-                var bounds=page.getCropBox();
-                double width=Math.max(1,bounds.getWidth()),height=Math.max(1,bounds.getHeight());
-                float scale=(float)Math.min(200.0/72.0,Math.min(4096.0/Math.max(width,height),Math.sqrt(10_000_000.0/(width*height))));
                 BufferedImage image=renderer.renderImage(number-1,scale,ImageType.GRAY);
                 if(text.isBlank() && isBlank(image)) {
                     image.flush();
                     pending.add(CompletableFuture.completedFuture(new Page(number,text,links,null,true)));
                 } else {
                     int originalPage=number;
-                    var crops=new ArrayList<BufferedImage>();
-                    for(var figure:figures)crops.add(ImageRegions.crop(image,page,figure,scale));
+                    var targets=new ArrayList<BufferedImage>(scanned ? List.of(image) : List.of());
+                    for(var figure:figures)targets.add(ImageRegions.crop(image,page,figure,scale));
                     pending.add(workers.submit(()->{
                         try{
-                            if(scanned)return new Page(originalPage,text,links,OcrService.requireReadable(ocr.recognize(image,originalPage),originalPage),false);
                             OcrService.Result merged=null;
-                            for(var crop:crops) {
-                                var found=ocr.recognize(crop,originalPage);
+                            for(var target:targets) {
+                                var found=ocr.recognize(target,originalPage);
+                                // Only a page without native text depends on OCR alone; elsewhere an unreadable result just adds nothing.
+                                if(text.isBlank())OcrService.requireReadable(found,originalPage);
                                 if(OcrService.readable(found))merged=merged==null ? found:new OcrService.Result(merged.text()+"\n"+found.text(),Math.min(merged.confidence(),found.confidence()),merged.lowConfidenceLines()+found.lowConfidenceLines());
                             }
                             return new Page(originalPage,text,links,merged,false);

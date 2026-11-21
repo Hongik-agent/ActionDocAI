@@ -155,4 +155,22 @@ class OcrDocumentTests {
             assertEquals(1,seen.sizes().size());assertTrue(doc.ocrPages().isEmpty());assertTrue(doc.markdown().contains(SENTENCE));
         }
     }
+    @Test void shortTextWithTinyImageSkipsOcrAndKeepsTheText()throws Exception{
+        var seen=recording("");
+        try(var pdf=new PDDocument()){
+            var page=new PDPage();pdf.addPage(page);try(var c=new PDPageContentStream(pdf,page)){
+                c.beginText();c.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA),12);c.newLineAtOffset(50,730);c.showText("Agenda");c.endText();
+                c.drawImage(LosslessFactory.createFromImage(pdf,new BufferedImage(8,8,BufferedImage.TYPE_INT_RGB)),40,730,4,4);
+            }
+            var doc=new DocumentService(seen.ocr()).normalize(file(pdf),null);
+            assertEquals(0,seen.sizes().size());assertTrue(doc.markdown().contains("Agenda"));
+        }
+    }
+    @Test void scannedPageWithUnreadableOcrStillFails()throws Exception{
+        try(var pdf=new PDDocument()){
+            scanPage(pdf,false);
+            var error=assertThrows(IllegalArgumentException.class,()->new DocumentService(recording("").ocr()).normalize(file(pdf),null));
+            assertTrue(error.getMessage().contains("1페이지를 자동 OCR로 처리했지만 읽을 수 있는 텍스트를 확보하지 못했습니다"));
+        }
+    }
 }
