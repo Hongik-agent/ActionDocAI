@@ -20,7 +20,7 @@ function choose(file) {
 }
 function setBusy(value) {
   busy = value;
-  for (const id of ['summarize', 'file', 'file-tab', 'text-tab', 'document-text', 'purpose', 'sample', 'remove-file']) $(id).disabled = value;
+  for (const id of ['summarize', 'file', 'file-tab', 'text-tab', 'document-text', 'purpose', 'sample', 'hero-sample', 'remove-file']) $(id).disabled = value;
   $('summarize').textContent = value ? '문서를 읽고 있어요…' : '문서 정리하기 →'; $('cancel').hidden = !value;
 }
 function evidence(block) { const el = node('div', 'evidence'); el.append(node('span', 'location', location(block)), node('div', '', block.text)); return el; }
@@ -52,7 +52,15 @@ $('file-tab').onclick = () => setMode('file'); $('text-tab').onclick = () => set
 $('file').onchange = event => choose(event.target.files[0]);
 $('remove-file').onclick = () => { selected = null; $('file').value = ''; $('file-label').textContent = '파일을 선택하거나 여기에 놓으세요'; $('remove-file').hidden = true; invalidate(); };
 $('document-text').oninput = () => { invalidate(); $('char-count').textContent = `${$('document-text').value.length.toLocaleString()} / 160,000자`; };
-$('sample').onclick = () => { $('document-text').value = sample; $('document-text').oninput(); };
+function showDocument(doc) {
+  resetAi(doc, $('purpose').value); report = summarize(doc, $('purpose').value); render(doc);
+}
+function trySample() {
+  if (busy) return; invalidate();
+  showDocument(validateDocument({ name: '체험용 샘플 · 지역기업 성장지원 사업 안내', pages: 0, blocks: blocksFromText(sample), warnings: ['기능 체험용 가상 문서입니다. 실제 지원사업 공고가 아닙니다.'] }));
+  $('progress').textContent = '샘플 정리 완료 · 선택한 파일과 입력한 본문은 유지됩니다.';
+}
+$('sample').onclick = trySample; $('hero-sample').onclick = trySample;
 $('purpose').onchange = () => { $('purpose-hint').textContent = PURPOSES[$('purpose').value][1]; invalidate(); };
 for (const type of ['dragover', 'dragleave', 'drop']) $('dropzone').addEventListener(type, event => {
   event.preventDefault(); $('dropzone').classList.toggle('drag', type === 'dragover'); if (type === 'drop') choose(event.dataTransfer.files[0]);
@@ -65,7 +73,7 @@ $('summarize').onclick = async () => {
   try {
     reading = new AbortController();
     const doc = mode === 'file' ? await readFile(selected, value => { $('progress').textContent = value; }, reading.signal) : validateDocument({ name: '붙여넣은 안내문', pages: 0, blocks: blocksFromText($('document-text').value), warnings: [] });
-    resetAi(doc,$('purpose').value); report = summarize(doc, $('purpose').value); render(doc); $('progress').textContent = '정리 완료 · 문서를 서버로 전송하지 않았습니다.';
+    showDocument(doc); $('progress').textContent = '정리 완료 · 문서를 서버로 전송하지 않았습니다.';
   } catch (reason) { error(reason.message || '문서를 읽지 못했습니다. 형식과 손상 여부를 확인해 주세요.'); $('progress').textContent = ''; }
   finally { setBusy(false); }
 };
