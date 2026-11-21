@@ -9,13 +9,13 @@ test('transient Gemini failures retry once, while rate limits and configuration 
   for(const status of [500,502,503,504]) {
     let calls=0;
     const mock=t.mock.method(globalThis,'fetch',async()=>++calls===1?new Response('',{status}):reply({ok:true}));
-    assert.deepEqual(await askGemini('test','',{}, {},10),{ok:true});
+    assert.deepEqual(await askGemini('test','',{}, {},10,'test',Date.now()+5000),{ok:true});
     assert.equal(calls,2);mock.mock.restore();
   }
   for(const [status,code] of [[429,'provider_limit'],[400,'provider_configuration'],[401,'provider_configuration'],[402,'provider_configuration'],[403,'provider_configuration'],[404,'provider_configuration'],[503,'provider_busy']]) {
     let calls=0;
     const mock=t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response('sensitive provider error',{status});});
-    await assert.rejects(askGemini('test','',{}, {},10),new RegExp(code));
+    await assert.rejects(askGemini('test','',{}, {},10,'test',Date.now()+5000),new RegExp(code));
     assert.equal(calls,status===503?2:1);mock.mock.restore();
   }
 });
@@ -23,7 +23,7 @@ test('transient Gemini failures retry once, while rate limits and configuration 
 test('network, incomplete output and verification errors are distinct and never leak raw text',async t=>{
   let calls=0;
   const mock=t.mock.method(globalThis,'fetch',async()=>{calls++;throw new TypeError('secret document');});
-  await assert.rejects(askGemini('test','',{}, {},10),/provider_connection/);
+  await assert.rejects(askGemini('test','',{}, {},10,'test',Date.now()+5000),/provider_connection/);
   assert.equal(calls,1);mock.mock.restore();
   for(const code of ['numbers','audit','evidence','items'])assert.equal(summaryFailure(Error(code)),'verification');
   assert.equal(summaryFailure(Error('incomplete')),'response_incomplete');
@@ -36,7 +36,7 @@ test('retry shares the original deadline instead of creating another full timeou
   let calls=0,deadlines=0;
   t.mock.method(AbortSignal,'timeout',()=>{deadlines++;return old.call(AbortSignal,20);});
   t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response('',{status:503});});
-  await assert.rejects(askGemini('test','',{}, {},10),/provider_timeout/);
+  await assert.rejects(askGemini('test','',{}, {},10,'test',Date.now()+5000),/provider_timeout/);
   assert.equal(calls,1);assert.equal(deadlines,1);
 });
 

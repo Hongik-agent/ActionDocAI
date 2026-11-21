@@ -5,8 +5,11 @@ import {createClient} from '@supabase/supabase-js';
 import {verifiedSummary,checkEvidence} from '../server/verify.js';
 import {PURPOSES} from '../src/summary.js';
 export const config={maxDuration:120};
+// Leave 10 seconds of the function limit for the cache write and the response.
+const modelBudget=(config.maxDuration-10)*1000;
 const labels=Object.fromEntries(Object.entries(PURPOSES).map(([id,[label]])=>[id,label]));
 export default async function summary(req,res) {
+  const deadline=Date.now()+modelBudget;
   res.setHeader('Cache-Control','private, no-store');
   if(req.method!=='POST') return res.status(405).end();
   const {blocks,purpose,pages,consent}=req.body??{};
@@ -31,7 +34,7 @@ export default async function summary(req,res) {
     const slot=reservation.data;
     if(slot.status==='cached') return res.json({status:'cached',items:checkEvidence(slot.result,source)});
     if(slot.status!=='reserved') return res.json({status:['personal','global','busy'].includes(slot.status)?slot.status:'unavailable'});
-    const items=await verifiedSummary(source,labels[purpose],model);
+    const items=await verifiedSummary(source,labels[purpose],model,deadline);
     const saved=await db.from('actiondoc_jobs').update({result:items}).eq('job',slot.job).eq('owner',user.id);
     if(saved.error) throw Error('cache');
     return res.json({status:'complete',items});

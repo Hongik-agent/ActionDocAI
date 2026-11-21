@@ -22,7 +22,7 @@ test('Gemini key stays in the provider header across summary and evidence audit'
     const reply = calls++ === 0 ? { items } : { supported: true };
     return Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(reply) }] } }] });
   });
-  assert.deepEqual(await verifiedSummary([{text}], '전체 정리', 'test'), items);
+  assert.deepEqual(await verifiedSummary([{text}], '전체 정리', 'test', Date.now() + 5000), items);
   assert.equal(calls, 2);
 });
 
@@ -36,6 +36,32 @@ test('a changed monetary unit is rejected before the second AI call',async t=>{
     calls++;
     return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({items:[{indexes:[0],statement:'지원금은 최대 100억 원입니다.'}]})}]}}]});
   });
-  await assert.rejects(verifiedSummary([{text}],'전체 정리','test'),/numbers/);
+  await assert.rejects(verifiedSummary([{text}],'전체 정리','test',Date.now()+5000),/numbers/);
   assert.equal(calls,1);
+});
+
+test('summary and audit share one deadline, and call logs carry timing but no document text', async t => {
+  const old = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = 'actiondoc-test-only-credential';
+  t.after(() => { if (old === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = old; });
+  const text = '지원금은 300원입니다.';
+  const logs = [];
+  t.mock.method(console, 'info', (...args) => logs.push(args.join(' ')));
+  t.mock.method(console, 'error', (...args) => logs.push(args.join(' ')));
+  let calls = 0;
+  // The draft answers after 150ms; the audit never answers, so only the time left before the deadline can end it.
+  t.mock.method(globalThis, 'fetch', (url, { signal }) => new Promise((resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason));
+    if (calls++ === 0) setTimeout(() => resolve(Response.json({ usageMetadata: { promptTokenCount: 9, candidatesTokenCount: 4 },
+      candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify({ items: [{ statement: text, indexes: [0] }] }) }] } }] })), 150);
+  }));
+  // AbortSignal.timeout does not hold the event loop open; a live server request does, so the test stands in for it.
+  const alive = setTimeout(() => {}, 2000); t.after(() => clearTimeout(alive));
+  const started = Date.now();
+  await assert.rejects(verifiedSummary([{ text }], '전체 정리', 'test', started + 400), /provider_timeout/);
+  assert.equal(calls, 2);
+  assert.ok(Date.now() - started < 600, 'the audit waited past the shared deadline');
+  assert.match(logs.join('\n'), /"stage":"summary".*"prompt":9.*"output":4/);
+  assert.match(logs.join('\n'), /timed out.*"stage":"audit"/);
+  assert.ok(!logs.join('\n').includes('300원'));
 });
