@@ -2,3 +2,8 @@
 
 .ai-panel{margin-top:24px;font-size:13px;line-height:1.8}.ai-panel article{padding:12px 0}.ai-panel article+article{border-top:1px solid #dde2ed}.ai-panel section+section{margin-top:20px}.ai-panel section h3{margin:0 0 -4px}.ai-panel .text-button{margin-right:20px}
 .ai-panel blockquote{margin:6px;color:#546280}
+
+.file-picker-row{display:flex;align-items:center;gap:8px;margin-top:10px;min-width:0}
+.file-picker-row .file-picker{flex:1;min-width:0;width:0;margin-top:0}
+.file-picker-row #remove-file{flex:none;margin:0;padding:8px 2px;min-height:36px;font-size:11px;white-space:nowrap}
+.dropzone strong{max-width:100%}
