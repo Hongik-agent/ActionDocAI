@@ -26,6 +26,23 @@ export function resetAi(doc=null,purpose=null) {
   $('ai-output').replaceChildren(); $('ai-consent').checked=false; $('ai-status').textContent='';
   $('ai-run').disabled=running||!doc; $('ai-hint').hidden=!!doc;
 }
+// One block per section the model chose, in the model's order; shared by real results and the sample example.
+export function aiNodes(items) {
+  const groups=new Map();
+  for(const item of items){
+    if(!groups.has(item.section)){const group=document.createElement('section');if(item.section)group.append(Object.assign(document.createElement('h3'),{textContent:item.section}));groups.set(item.section,group);}
+    const article=document.createElement('article'), details=document.createElement('details');
+    details.append(Object.assign(document.createElement('summary'),{textContent:'원문 근거 · '+item.blocks.map(location).join(', ')}),...item.blocks.map(block=>Object.assign(document.createElement('blockquote'),{textContent:block.text})));
+    article.append(Object.assign(document.createElement('p'),{textContent:item.statement}),details);groups.get(item.section).append(article);
+  }
+  for(const [section,group] of groups){
+    const header=document.createElement('div');header.className='section-heading';
+    if(group.firstElementChild?.tagName==='H3')header.append(group.firstElementChild);
+    header.append(copyControl(()=>aiText(items.filter(i=>i.section===section)),'복사',(section||'AI 요약 항목')+' 복사'));
+    group.prepend(header);
+  }
+  return [...groups.values()];
+}
 export async function initializeAi() {
   try {
     const response=await fetch('/api/config',{cache:'no-store'});
@@ -38,7 +55,7 @@ export async function initializeAi() {
       $('ai-panel').hidden=false;
       $('ai-delete').hidden=!session;
       if (_event==='SIGNED_OUT') resetAi();
-      $('ai-login').hidden=!!session; $('ai-controls').hidden=!session||!config.enabled; $('ai-logout').hidden=!session;
+      $('ai-login').hidden=!!session; $('ai-login-note').hidden=!!session||!config.enabled; $('ai-controls').hidden=!session||!config.enabled; $('ai-logout').hidden=!session;
       $('ai-available').textContent=!config.enabled?'AI 요약은 현재 이용할 수 없습니다. 기존 계정은 로그인 후 삭제할 수 있습니다.':session?'문서를 먼저 정리한 뒤 AI 요약을 실행하세요.':'무료 AI 요약은 Google 로그인 후 사용할 수 있습니다. 로그인 후 문서를 선택해 주세요.';
     });
     $('ai-login').onclick=async()=>{
@@ -75,21 +92,7 @@ async function run() {
     if(job!==current)return;
     if(!['complete','cached'].includes(data.status))throw Error(data.status);
     job.items=data.items.map(({section,statement,indexes})=>({section,statement,blocks:indexes.map(i=>doc.blocks[i])}));
-    // Items keep the model's order; each section the model chose becomes one heading.
-    const groups=new Map();
-    for(const item of job.items){
-      if(!groups.has(item.section)){const group=document.createElement('section');if(item.section)group.append(Object.assign(document.createElement('h3'),{textContent:item.section}));groups.set(item.section,group);}
-      const article=document.createElement('article'), details=document.createElement('details');
-      details.append(Object.assign(document.createElement('summary'),{textContent:'원문 근거 · '+item.blocks.map(location).join(', ')}),...item.blocks.map(block=>Object.assign(document.createElement('blockquote'),{textContent:block.text})));
-      article.append(Object.assign(document.createElement('p'),{textContent:item.statement}),details);groups.get(item.section).append(article);
-    }
-    for(const [section,group] of groups){
-      const header=document.createElement('div');header.className='section-heading';
-      if(group.firstElementChild?.tagName==='H3')header.append(group.firstElementChild);
-      header.append(copyControl(()=>aiText(job.items.filter(i=>i.section===section)),'복사',(section||'AI 요약 항목')+' 복사'));
-      group.prepend(header);
-    }
-    $('ai-output').replaceChildren(copyControl(()=>aiText(job.items),'AI 전체 복사','AI 상세 요약 전체 복사'),...groups.values());
+    $('ai-output').replaceChildren(copyControl(()=>aiText(job.items),'AI 전체 복사','AI 상세 요약 전체 복사'),...aiNodes(job.items));
     $('ai-status').textContent=data.status==='cached'?'저장된 요약을 다시 표시했습니다. 무료 횟수는 차감되지 않습니다.':'AI 요약 완료 · 금액과 기한은 인용된 근거와 함께 확인해 주세요.';
   } catch(e) {if(job===current)$('ai-status').textContent=(messages[e.message]||messages.unavailable)+' 기본 정리를 확인해 주세요.';}
   finally {running=false;$('ai-run').disabled=!current;}

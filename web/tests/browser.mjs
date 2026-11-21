@@ -15,6 +15,10 @@ try {
   await page.goto('http://127.0.0.1:4184/');
   await page.getByRole('tab', { name: '텍스트 붙여넣기' }).click();
   await page.selectOption('#purpose', 'SUPPORT'); await page.click('#sample');
+  // Before choosing a document, visitors can compare the two modes, and the sample shows a prepared AI example.
+  assert.match(await page.locator('.compare').innerText(), /문서 전송[\s\S]*없음/);
+  await page.waitForSelector('#ai-example:not([hidden])');
+  assert.match(await page.locator('#ai-example').innerText(), /AI 상세 요약 예시[\s\S]*500,000원/);
   await page.waitForSelector('#results:not([hidden])');
   assert.match(await page.locator('#sections').innerText(), /500,000원/);
   assert.match(await page.locator('#sections').innerText(), /다른 지원금을 받은 기업은 제외/);
@@ -24,6 +28,8 @@ try {
   // User supplied markup stays text and never runs or contacts an external host.
   await page.fill('#document-text', '요금: 33,000원입니다.\n<script>window.attacked=true</script>\n다만, 신규 신청자는 제외합니다.'); await page.click('#summarize');
   assert.equal(await page.evaluate(() => window.attacked), undefined);
+  // The prepared example belongs to the sample only; a real document never shows it.
+  assert.equal(await page.locator('#ai-example').isVisible(), false);
   await page.getByRole('tab', { name: '파일 선택' }).click();
   await page.setInputFiles('#file', { name: '안내.html', mimeType: 'text/html', buffer: Buffer.from('<p>지원 대상: 지역기업</p><script>window.attacked=true</script><img src="https://invalid.example/tracker"><p>지원 금액: 12,000원</p>') });
   await page.click('#summarize'); await page.waitForSelector('#results:not([hidden])');

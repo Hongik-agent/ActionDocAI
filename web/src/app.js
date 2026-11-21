@@ -1,12 +1,12 @@
 import {copyControl,sectionText,reportText} from './copy.js';
-import {aiItems,initializeAi,resetAi} from './ai.js';
+import {aiItems,aiNodes,initializeAi,resetAi} from './ai.js';
+import { SAMPLE_TEXT, SAMPLE_AI } from './sample.js';
 import { PURPOSES, blocksFromText, validateDocument, summarize, location, reportMarkdown } from './summary.js';
 import { readFile } from './read.js';
 const $ = id => document.getElementById(id);
 let mode = 'file', selected = null, busy = false, report = null, reading = null;
-const sample = `지역기업 성장지원 사업 안내\n지원 대상: 지역 내 사업장을 둔 중소기업입니다.\n지원 내용: 선정 기업에 교육비 최대 500,000원을 지원합니다.\n신청 기간: 2027년 3월 1일부터 2027년 3월 20일까지입니다.\n신청 방법: 신청서와 사업자등록증을 운영팀에 제출해 주세요.\n단, 동일 항목으로 다른 지원금을 받은 기업은 제외됩니다.\n제출 서류가 누락되면 심사 대상에서 제외될 수 있습니다.\n문의: 기업지원팀, 02-0000-0000\n※ 기능 체험용 가상 문서입니다.`;
 function node(tag, cls, text) { const el = document.createElement(tag); if (cls) el.className = cls; if (text !== undefined) el.textContent = text; return el; }
-function invalidate() { resetAi(); report = null; $('results').hidden = true; $('error').hidden = true; }
+function invalidate() { resetAi(); report = null; $('results').hidden = true; $('ai-example').hidden = true; $('error').hidden = true; }
 function error(message) { $('error').textContent = message; $('error').hidden = false; }
 function setMode(value) {
   if (busy) return; mode = value; invalidate();
@@ -61,7 +61,10 @@ function showDocument(doc) {
 }
 function trySample() {
   if (busy) return; invalidate();
-  showDocument(validateDocument({ name: '체험용 샘플 · 지역기업 성장지원 사업 안내', pages: 0, blocks: blocksFromText(sample), warnings: ['기능 체험용 가상 문서입니다. 실제 지원사업 공고가 아닙니다.'] }));
+  const doc = validateDocument({ name: '체험용 샘플 · 지역기업 성장지원 사업 안내', pages: 0, blocks: blocksFromText(SAMPLE_TEXT), warnings: ['기능 체험용 가상 문서입니다. 실제 지원사업 공고가 아닙니다.'] });
+  showDocument(doc);
+  $('ai-example-items').replaceChildren(...aiNodes(SAMPLE_AI.map(item => ({ ...item, blocks: item.indexes.map(i => doc.blocks[i]) }))));
+  $('ai-example').hidden = false;
   $('progress').textContent = '샘플 정리 완료 · 선택한 파일과 입력한 본문은 유지됩니다.';
 }
 $('sample').onclick = trySample; $('hero-sample').onclick = trySample;
