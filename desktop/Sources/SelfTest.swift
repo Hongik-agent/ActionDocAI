@@ -63,8 +63,10 @@ import SQLite3
         let mdReport=AnalysisReport(id:"md",documentId:document.id,title:"저장 결과",mode:"ai",decision:"REVIEW_TASKS",findings:[finding],questions:[],warnings:["주의 예시"],chunks:1,createdAt:"2026-10-31T00:00:00Z",documentType:"NOTICE",overview:"개요 예시",sections:[ReportSection(id:"s1",title:"첫 섹션",body:"첫 본문",evidence:[ev],aiRefined:false),ReportSection(id:"s2",title:"둘째 섹션",body:"둘째 본문",evidence:[evBody],aiRefined:false)],periodStatus:"UNKNOWN",personalChecks:[PersonalCheck(id:"p1",criterion:"조건 예시",status:"MATCH",reason:"이유 예시",profileQuote:"",evidence:[])],facts:[],stages:[])
         let md=mdReport.markdown(document:document)
         for part in ["# 저장 결과","## 첫 섹션","> 원문 근거 (1페이지 · b1): 근거 문장","> 원문 근거 (본문 · b2): 본문 문장","## 내 상황과 비교","## 할 일","## 원문\n\n"+document.markdown] {try require(md.contains(part),"Markdown is missing: \(part)")}
+        let nlReport=AnalysisReport(id:"nl",documentId:document.id,title:"제목",mode:"ai",decision:"REVIEW_TASKS",findings:[],questions:[],warnings:[],chunks:1,createdAt:"2026-10-31T00:00:00Z",documentType:nil,overview:nil,sections:[ReportSection(id:"s",title:"줄\n바꿈",body:"본문\n# 가짜",evidence:[Evidence(blockId:"b1",page:1,quote:"첫줄\n# 둘째줄")],aiRefined:false)],periodStatus:nil,personalChecks:nil,facts:nil,stages:nil)
+        let nl=nlReport.markdown(document:document);try require(nl.contains("## 줄 바꿈\n")&&nl.contains("첫줄\n> # 둘째줄")&&nl.contains("\\# 가짜") && !nl.contains("\n# 가짜") && !nl.contains("\n# 둘째줄"),"Multi-line fields escaped the markdown structure")
         var bare=try JSONSerialization.jsonObject(with:JSONEncoder().encode(report)) as! [String:Any];for k in ["actionRoutes","facts","personalChecks"]{bare.removeValue(forKey:k)}
-        let bareReport=try JSONDecoder().decode(AnalysisReport.self,from:JSONSerialization.data(withJSONObject:bare));try require(!bareReport.markdown(document:document).isEmpty,"Older record markdown is empty")
+        let bareReport=try JSONDecoder().decode(AnalysisReport.self,from:JSONSerialization.data(withJSONObject:bare));try require(bareReport.markdown(document:document).contains("# "+report.title),"Older record markdown is empty")
         print("PASS: markdown export includes report, evidence, personal checks, tasks and source text")
 
     }

@@ -102,15 +102,18 @@ let sampleNotice = """
 """
 extension AnalysisReport {
     func markdown(document:SourceDocument)->String {
-        let quote={(e:Evidence)->String in "> 원문 근거 (\(SourceLocation.page(e.page)) · \(e.blockId)): \(e.quote)"}
+        let one={(t:String)->String in t.split(whereSeparator:\.isNewline).joined(separator:" ")}
+        // multi-line text keeps its breaks; a line starting with # is escaped so it cannot become a heading
+        let body={(t:String)->String in t.split(separator:"\n",omittingEmptySubsequences:false).map{$0.drop(while:{$0==" "}).hasPrefix("#") ? "\\"+$0:String($0)}.joined(separator:"\n")}
+        let quote={(e:Evidence)->String in "> 원문 근거 (\(SourceLocation.page(e.page)) · \(one(e.blockId))): "+e.quote.replacingOccurrences(of:"\r\n",with:"\n").replacingOccurrences(of:"\n",with:"\n> ")}
         let status=["MATCH":"조건 일치","MISMATCH":"조건 불일치","UNKNOWN":"추가 확인","IRRELEVANT":"관련 조건 없음"]
-        var out=["# \(title)"]
-        if let overview,!overview.isEmpty{out.append(overview)}
-        out+=warnings.map{"주의: \($0)"}
-        if let checks=personalChecks,!checks.isEmpty{out.append("## 내 상황과 비교");out+=checks.map{"- \($0.criterion) (\(status[$0.status] ?? "추가 확인")): \($0.reason)"}}
-        for s in sections ?? []{out.append("## \(s.title)");out.append(s.body);out+=s.evidence.map(quote)}
+        var out=["# \(one(title))"]
+        if let overview,!overview.isEmpty{out.append(body(overview))}
+        out+=warnings.map{"주의: \(one($0))"}
+        if let checks=personalChecks,!checks.isEmpty{out.append("## 내 상황과 비교");out+=checks.map{"- \(one($0.criterion)) (\(status[$0.status] ?? "추가 확인")): \(one($0.reason))"}}
+        for s in sections ?? []{out.append("## \(one(s.title))");out.append(body(s.body));out+=s.evidence.map(quote)}
         let actions=findings.filter{$0.category=="action"}
-        if !actions.isEmpty{out.append("## 할 일");out+=actions.map{"- \($0.title)"+($0.date.map{" (\($0))"} ?? "")+": \($0.detail)"}}
+        if !actions.isEmpty{out.append("## 할 일");out+=actions.map{"- \(one($0.title))"+($0.date.map{" (\($0))"} ?? "")+": \(one($0.detail))"}}
         out.append("## 원문\n\n"+document.markdown)
         return out.joined(separator:"\n\n")+"\n"
     }
