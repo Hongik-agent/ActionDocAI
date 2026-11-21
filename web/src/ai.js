@@ -2,7 +2,7 @@ import {copyControl,aiText} from './copy.js';
 import {createClient} from '@supabase/supabase-js';
 import {location} from './summary.js';
 const $=id=>document.getElementById(id);
-let client, current, running=false, pending=false;
+let client, current, running=false;
 const messages={
   length:'무료 AI는 본문 10,000자·PDF 10쪽까지 지원합니다.',
   personal:'오늘 이 계정의 무료 AI 한도에 도달했습니다.',
@@ -29,7 +29,7 @@ const limitMessage=doc=>doc.pages>10?`이 PDF는 ${doc.pages}쪽입니다. AI �
 // Verified items of the current document only; reset with it.
 export const aiItems=()=>exportItems(current?.items??[]);
 export function resetAi(doc=null,purpose=null) {
-  current=doc?{doc,purpose}:null; pending=false;
+  current=doc?{doc,purpose}:null;;
   $('ai-output').replaceChildren(); $('ai-consent').checked=false; $('ai-status').textContent='';
 }
 // One block per section the model chose, in the model's order; shared by real results and the sample example.
@@ -71,14 +71,7 @@ export function promptLogin() {
   $('ai-status').textContent='AI 요약은 Google 로그인이 필요합니다. 아래 버튼으로 로그인해 주세요.';
   $('ai-panel').scrollIntoView({behavior:'smooth',block:'center'});
 }
-// Called after the document is read: runs at once if consent is given, otherwise starts as soon as it is ticked.
-export function requestAi() {
-  if(!current) return;
-  if(tooLarge(current.doc)){$('ai-status').textContent=limitMessage(current.doc);$('ai-panel').scrollIntoView({behavior:'smooth',block:'center'});return;}
-  if($('ai-consent').checked) return run();
-  pending=true;$('ai-status').textContent='아래 동의 항목에 체크하면 바로 AI 요약을 시작합니다.';
-  $('ai-panel').scrollIntoView({behavior:'smooth',block:'center'});$('ai-consent').focus({preventScroll:true});
-}
+export function requestAi() { return run(); }
 export async function initializeAi() {
   try {
     const response=await fetch('/api/config',{cache:'no-store'});
@@ -92,7 +85,7 @@ export async function initializeAi() {
       $('ai-delete').hidden=!session;
       if (_event==='SIGNED_OUT') resetAi();
       $('ai-login').hidden=!!session; $('ai-login-note').hidden=!!session||!config.enabled; $('ai-controls').hidden=!session||!config.enabled; $('ai-logout').hidden=!session;
-      $('ai-available').textContent=!config.enabled?'AI 요약은 현재 이용할 수 없습니다. 기존 계정은 로그인 후 삭제할 수 있습니다.':session?'문서를 선택한 뒤 위의 ‘AI로 요약하기’를 누르세요. 요약 결과는 이곳에 표시됩니다.':'무료 AI 요약은 Google 로그인 후 사용할 수 있습니다. 로그인 후 문서를 선택해 주세요.';
+      $('ai-available').textContent=!config.enabled?'AI 요약은 현재 이용할 수 없습니다. 기존 계정은 로그인 후 삭제할 수 있습니다.':session?'문서를 선택하고 아래에서 동의한 뒤 ‘AI로 요약하기’를 누르세요.':'무료 AI 요약은 Google 로그인 후 사용할 수 있습니다. 로그인 후 문서를 선택해 주세요.';
     });
     $('ai-login').onclick=async()=>{
       const {error}=await client.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin}});
@@ -109,7 +102,6 @@ export async function initializeAi() {
       } catch { $('ai-status').textContent='탈퇴 완료를 확인하지 못했습니다. 다시 로그인해 확인해 주세요.'; }
       finally { $('ai-delete').disabled=false; }
     };
-    $('ai-consent').onchange=()=>{if(pending&&$('ai-consent').checked){pending=false;run();}};
     $('ai-direct').hidden=!config.enabled;
   } catch { /* Local basic summary remains available. */ }
 }

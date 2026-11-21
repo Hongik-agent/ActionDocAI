@@ -28,7 +28,7 @@ function setBusy(value) {
   $('summarize').textContent = value ? '문서를 읽고 있어요…' : '문서 정리하기 →'; $('cancel').hidden = !value;
 }
 function evidence(block) { const el = node('div', 'evidence'); el.append(node('span', 'location', location(block)), node('div', '', block.text)); return el; }
-function render(doc) {
+function render(doc, showBasicResults) {
   $('copy-all-slot').replaceChildren(copyControl(()=>reportText(report,aiItems()),'전체 복사','정리 결과 전체 복사'));
   $('result-meta').textContent = `${doc.name} · ${doc.pages ? `${doc.pages}쪽` : '원본 쪽 번호 없음'} · ${doc.characters.toLocaleString()}자 · ${PURPOSES[report.purpose][0]} · 무료 기본 정리`;
   $('warnings').replaceChildren(...report.warnings.map(w => node('p', '', w)));
@@ -50,15 +50,19 @@ function render(doc) {
   $('source').replaceChildren();
   const sourceDetails = $('source').parentElement; sourceDetails.open = false;
   sourceDetails.ontoggle = () => { if (sourceDetails.open && !$('source').children.length) { for (const block of doc.blocks) $('source').append(evidence(block)); } };
-  $('results').hidden = false; $('results').focus({ preventScroll: true }); $('results').scrollIntoView({ behavior: 'smooth' });
+  $('results').hidden = false;
+  if (showBasicResults) {
+    $('results').focus({ preventScroll: true });
+    $('results').scrollIntoView({ behavior: 'smooth' });
+  }
 }
 $('file-tab').onclick = () => setMode('file'); $('text-tab').onclick = () => setMode('text');
 $('pdf-options').oninput = invalidate;
 $('file').onchange = event => choose(event.target.files[0]);
 $('remove-file').onclick = () => { selected = null; $('pdf-options').hidden = true; $('file').value = ''; $('file-label').textContent = '파일을 선택하거나 여기에 놓으세요'; $('remove-file').hidden = true; invalidate(); };
 $('document-text').oninput = () => { invalidate(); $('char-count').textContent = `${$('document-text').value.length.toLocaleString()} / 160,000자`; };
-function showDocument(doc) {
-  resetAi(doc, $('purpose').value); report = summarize(doc, $('purpose').value); render(doc);
+function showDocument(doc, showBasicResults = true) {
+  resetAi(doc, $('purpose').value); report = summarize(doc, $('purpose').value); render(doc, showBasicResults);
 }
 function trySample() {
   if (busy) return; invalidate();
@@ -74,7 +78,7 @@ for (const type of ['dragover', 'dragleave', 'drop']) $('dropzone').addEventList
   event.preventDefault(); $('dropzone').classList.toggle('drag', type === 'dragover'); if (type === 'drop') choose(event.dataTransfer.files[0]);
 });
 // Reads the selected file or pasted text in the browser and shows the basic summary; returns the document or null.
-async function readDocument() {
+async function readDocument(showBasicResults = true) {
   if (mode === 'file' && !selected) { error('정리할 파일을 선택해 주세요.'); return null; }
   if (mode === 'text' && !$('document-text').value.trim()) { error('정리할 본문을 입력해 주세요.'); return null; }
   setBusy(true); $('progress').textContent = '본문과 원문 위치를 읽고 있어요…';
@@ -85,20 +89,34 @@ async function readDocument() {
       end: $('pdf-end').value || $('pdf-end').validity.badInput ? $('pdf-end').valueAsNumber : null,
       fast: $('pdf-fast').checked
     }) : validateDocument({ name: '붙여넣은 안내문', pages: 0, blocks: blocksFromText($('document-text').value), warnings: [] });
-    showDocument(doc); reusable = true; $('progress').textContent = '정리 완료 · 문서를 서버로 전송하지 않았습니다.';
+    showDocument(doc, showBasicResults); reusable = true; $('progress').textContent = '정리 완료 · 문서를 서버로 전송하지 않았습니다.';
     return doc;
   } catch (reason) { error(reason.message || '문서를 읽지 못했습니다. 형식과 손상 여부를 확인해 주세요.'); $('progress').textContent = ''; return null; }
   finally { setBusy(false); }
 }
 $('summarize').onclick = async () => { if (busy) return; invalidate(); await readDocument(); };
-// The only AI entry point: check sign-in first so nothing is read in vain, reuse a document already read from the
-// current input, otherwise read it, then hand it to the AI summary.
 $('ai-direct').onclick = async () => {
   if (busy) return;
   if (!(await aiSignedIn())) { promptLogin(); return; }
-  if (reusable) { requestAi(); return; }
+  if (busy) return;
+  if (mode === 'file' ? !selected : !$('document-text').value.trim()) {
+    $('ai-status').textContent = '요약할 문서가 없습니다. 위에서 파일을 선택하거나 본문을 붙여넣어 주세요.';
+    return;
+  }
+  if (!$('ai-consent').checked) {
+    $('ai-status').textContent = '요약을 시작하려면 위의 본문 전송 및 저장 동의에 체크해 주세요.';
+    $('ai-consent').focus();
+    return;
+  }
+  if (reusable) { await requestAi(); return; }
   invalidate();
-  if (await readDocument()) requestAi();
+  $('ai-status').textContent = '요약할 문서를 읽고 있습니다…';
+  if (!(await readDocument(false))) {
+    $('ai-status').textContent = $('error').textContent;
+    return;
+  }
+  $('ai-consent').checked = true;
+  await requestAi();
 };
 $('cancel').onclick = () => reading?.abort(new Error('문서 읽기를 취소했습니다.'));
 $('download').onclick = () => {
