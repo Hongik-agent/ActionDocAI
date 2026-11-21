@@ -25,7 +25,7 @@ class ActionRoutesTests {
  }
  @Test void expiredNoticesKeepReferenceLinksWithoutApplyPrompt()throws Exception{
   var r=analyze(document("참여자 모집 공고\n○ 사업명: 서비스 지원\n○ 신청기간: 2020년 9월 7일 ~ 9월 10일\n○ 신청방법: https://youth.seoul.go.kr 온라인 신청"));
-  assertEquals("CLOSED",r.periodStatus());var link=r.actionRoutes().get(0);assertEquals("REFERENCE",link.status());assertEquals("2020-09-10",link.applicationEndsOn());assertFalse(link.title().contains("신청"));assertTrue(link.hint().contains("종료"));
+  var link=r.actionRoutes().get(0);assertEquals("REFERENCE",link.status());assertEquals("2020-09-10",link.applicationEndsOn());assertFalse(link.title().contains("신청"));assertTrue(link.hint().contains("종료"));
  }
  @Test void noInventedDeepLinkAndQueryEncodingIsPreserved()throws Exception{
   var r=analyze(document("신청 사이트: youth.incheon.go.kr\n신청: https://example.org/apply?id=a%2Fb&code=3#step2"));

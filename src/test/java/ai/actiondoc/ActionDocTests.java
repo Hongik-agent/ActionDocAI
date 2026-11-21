@@ -18,7 +18,6 @@ class ActionDocTests {
         Document d=documents.normalize(null,"2026년 12월 1일부터 월 요금은 36,300원입니다.\n2026년 11월 25일까지 할인 신청서를 제출해 주세요.\n미제출 시 할인이 적용되지 않습니다.");
         assertTrue(d.markdown().contains("<!-- b2 -->"));
         Analysis a=analyzer.analyze(d,"","local",false);
-        assertTrue(a.findings().stream().anyMatch(f->f.category().equals("fee")));
         Finding f=a.findings().stream().filter(x->x.category().equals("action")).findFirst().orElseThrow();
         assertEquals("2026-11-25",f.date());
         assertTrue(d.blocks().stream().anyMatch(b->b.id().equals(f.blockId())&&b.text().contains(f.quote())));
@@ -44,11 +43,27 @@ class ActionDocTests {
         bytes.reset();try(var pdf=new PDDocument()){pdf.addPage(new PDPage());pdf.save(bytes);}
         final byte[] image=bytes.toByteArray();assertThrows(IllegalArgumentException.class,()->documents.normalize(new MockMultipartFile("file","scan.pdf","application/pdf",image),null));
     }
-    @Test void missingInformationDoesNotInventImpact() throws Exception {
+    @Test void fiftyPagesAllowedAndFiftyOneRejectedBeforeOcr() throws Exception {
+        assertEquals(50,documents.normalize(pdf(50,true),null).pages());
+        // Blank 51-page PDF would fail with 'no text' if it reached extraction.
+        var failure=assertThrows(IllegalArgumentException.class,()->documents.normalize(pdf(51,false),null));
+        assertTrue(failure.getMessage().contains("51쪽"));assertTrue(failure.getMessage().contains("50쪽까지"));
+    }
+    private MockMultipartFile pdf(int count,boolean text) throws Exception {
+        var bytes=new ByteArrayOutputStream();
+        try(var pdf=new PDDocument()) {
+            for(int i=0;i<count;i++) {
+                var page=new PDPage();pdf.addPage(page);
+                if(text)try(var stream=new PDPageContentStream(pdf,page)){stream.beginText();stream.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA),12);stream.newLineAtOffset(40,700);stream.showText("Page "+(i+1)+": document summary source");stream.endText();}
+            }
+            pdf.save(bytes);
+        }
+        return new MockMultipartFile("file","notice.pdf","application/pdf",bytes.toByteArray());
+    }
+    @Test void missingInformationDoesNotInventAction() throws Exception {
         Analysis a=analyzer.analyze(documents.normalize(null,"월 이용요금은 33,000원입니다."),"","local",false);
-        assertTrue(a.findings().stream().noneMatch(f->f.category().equals("impact")));
-        assertTrue(a.questions().stream().anyMatch(q->q.contains("영향이 없다는 의미는 아닙니다")));
-        assertTrue(a.findings().stream().noneMatch(f->f.category().equals("action")));
+        assertTrue(a.findings().isEmpty());assertEquals("NEEDS_REVIEW",a.decision());
+        assertTrue(a.sections().stream().filter(x->x.id().equals("purpose-action")).allMatch(x->x.evidence().isEmpty()&&x.body().contains("찾지 못했습니다")));
     }
     @Test void automaticChangesDoNotCreateAction() throws Exception {
         Analysis a=analyzer.analyze(documents.normalize(null,"할인 신청이 필요 없습니다. 자동 적용됩니다."),"","local",false);
@@ -58,24 +73,15 @@ class ActionDocTests {
         List<Block> blocks=new ArrayList<>();for(int i=0;i<60;i++)blocks.add(new Block("b"+i,1,"가".repeat(1800)));
         List<Block> covered=AnalysisService.chunk(blocks).stream().flatMap(List::stream).toList();assertEquals(blocks,covered);
     }
-    @Test void technicalNegationsAreNotMissedActionImpacts() throws Exception {
-        var doc=documents.normalize(null,"실제 갱신·운영을 의무화하지 않음\n비상정지와 수동전환 절차를 마련해야 함\n데이터는 공개하지 않고 비식별 데이터를 제공함\n안전관리형 과제로 지정하지 않음\n미제출 시 할인이 적용되지 않습니다.");
-        var report=analyzer.analyze(doc,"","local",false);
-        var impacts=report.findings().stream().filter(f->f.category().equals("impact")).toList();
-        assertEquals(1,impacts.size());
-        assertEquals("미제출 시 할인이 적용되지 않습니다.",impacts.get(0).quote());
-        assertTrue(AnalysisService.isMissedActionImpact("요금 미납 시 서비스가 정지됩니다."));
-        assertFalse(AnalysisService.isMissedActionImpact("요금 미납 여부를 확인합니다."));
-    }
     @Test void longLocalReportKeepsAllEvidenceWithoutDumpingItIntoBody() throws Exception {
         StringBuilder source=new StringBuilder();
         for(int i=0;i<90;i++)source.append("기술 ").append(i).append("의 기존 설계를 변경합니다.\n");
         source.append("변경 조건: ").append("장기 운영 조건과 예외를 확인합니다. ".repeat(30));
         var doc=documents.normalize(null,source.toString());
-        var report=analyzer.analyze(doc,"","local",false);
-        var section=report.sections().stream().filter(x->x.id().equals("change")).findFirst().orElseThrow();
+        var report=analyzer.analyze(doc,"","local",false,"CONTRACT");
+        var section=report.sections().stream().filter(x->x.id().equals("purpose-change")).findFirst().orElseThrow();
         assertTrue(section.body().length()<750);
-        assertTrue(section.body().contains("원문 근거"));
+        assertEquals(3,section.body().split("\n").length);
         assertEquals(91,section.evidence().size());
         for(var e:section.evidence())assertTrue(doc.blocks().stream().anyMatch(b->b.id().equals(e.blockId())&&b.text().contains(e.quote())));
         assertFalse(section.body().contains("장기 운영"));

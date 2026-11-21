@@ -12,12 +12,7 @@ class GovernmentNoticeRegressionTests {
         if(output!=null)Files.writeString(Path.of(output),new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(document));
         Assertions.assertEquals(13,document.pages());
         var report=new AnalysisService(new ObjectMapper()).analyze(document,"","local",false);
-        Assertions.assertEquals("PUBLIC_NOTICE",report.documentType());
-        Assertions.assertEquals("CLOSED",report.periodStatus());
-        Assertions.assertTrue(report.findings().isEmpty(),"Expired notice must not propose tasks");
-        String body=report.sections().stream().map(ai.actiondoc.Models.ReportSection::body).reduce("",(a,b)->a+b);
-        for(String expected:java.util.List.of("1억원","3.5%","3.0%","6천만원","8천만원","가족관계증명서","11.(월)","29.(금)"))Assertions.assertTrue(body.contains(expected),expected);
-        for(var section:report.sections())for(var evidence:section.evidence())Assertions.assertTrue(document.blocks().stream().anyMatch(b->b.id().equals(evidence.blockId())&&b.text().contains(evidence.quote())));
+        LocalSummaryTests.assertMatchesBasicSummary(document,report,"GENERAL");
         if(output!=null)Files.writeString(Path.of(output+".report.json"),new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(report));
     }
 }

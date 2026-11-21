@@ -13,7 +13,7 @@ final class ActionRoutes {
     private static final Pattern PHONE=Pattern.compile("(?<![0-9])((?:0(?:2|[3-6][1-5]|70|10)[- ](?:[0-9]{3,4}[- ][0-9]{4}|120)|1[568][0-9]{2}[- ][0-9]{4})(?:\\s*[~～]\\s*[0-9]{1,4})?)(?![0-9])");
     static List<ActionRoute> extract(Document doc,Analysis report){
         LinkedHashMap<String,ActionRoute> result=new LinkedHashMap<>();String end=null;
-        for(var b:doc.blocks())if(b.text().replaceAll("\\s+","").matches(".*(신청기간|접수기간|모집기간).*")){var range=NoticeReport.DateWindow.parse(b.text());if(range!=null){end=range.end().toString();break;}}
+        for(var b:doc.blocks())if(b.text().replaceAll("\\s+","").matches(".*(신청기간|접수기간|모집기간).*")){var range=DateWindow.parse(b.text());if(range!=null){end=range.end().toString();break;}}
         boolean closed="CLOSED".equals(report.periodStatus())||(end!=null&&LocalDate.parse(end).isBefore(LocalDate.now(ZoneId.of("Asia/Seoul"))));
         for(int i=0;i<doc.blocks().size();i++){
             var b=doc.blocks().get(i);String context=context(doc.blocks(),i);Matcher urls=WEB.matcher(b.text());

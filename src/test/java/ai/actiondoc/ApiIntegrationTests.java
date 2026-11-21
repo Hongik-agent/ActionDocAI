@@ -51,7 +51,7 @@ class ApiIntegrationTests {
         String docId=json.readTree(uploaded.getResponse().getContentAsString()).path("id").asText();
         var body=json.createObjectNode().put("documentId",docId).put("mode","local").put("consent",false).put("purpose","BUSINESS");
         mvc.perform(post("/api/analyses").session(session).header("X-CSRF-Token",token).contentType("application/json").content(body.toString()))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.sections[0].id").value("purpose-requests"));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.sections[0].id").value("purpose-action"));
         body.put("purpose","UNKNOWN");
         mvc.perform(post("/api/analyses").session(session).header("X-CSRF-Token",token).contentType("application/json").content(body.toString())).andExpect(status().isBadRequest());
     }
