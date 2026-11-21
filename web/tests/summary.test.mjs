@@ -56,3 +56,14 @@ test('shared line-joining fixture', () => {
   for (const c of JSON.parse(readFileSync(new URL('../../shared/fixtures/line-joining.json', import.meta.url))).cases)
     assert.deepEqual(joinLines(c.lines).split('\n'), c.expected, c.name);
 });
+
+test('PDF line breaks and pasted text retain the same deadline, amount and documents', () => {
+  const lines = ['신청 마감: 11월 30일 18:00', '지원 금액: 50,000원', '제출 서류: 신청서와 사업자등록증'];
+  const pdf = summarize({ ...source, pages: 1, blocks: blocksFromText(lines.map(line => line.replace(': ', ':\n')).join('\n'), 1) });
+  const pasted = summarize({ ...source, blocks: blocksFromText(lines.join('\n')) });
+  for (const [id, expected] of [['date', lines[0]], ['cost', lines[1]], ['action', lines[2]]]) {
+    assert.equal(pdf.sections.find(s => s.id === id).excerpts[0].text, expected);
+    assert.equal(pasted.sections.find(s => s.id === id).excerpts[0].text, expected);
+    assert.equal(pdf.sections.find(s => s.id === id).excerpts[0].page, 1);
+  }
+});

@@ -164,6 +164,26 @@ function factScore(id, text) {
     default: return 0;
   }
 }
+// Treat a label and its value alike whether PDF extraction put them on one line or two.
+function joinLabelValues(blocks) {
+  const result = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i], next = blocks[i + 1];
+    const label = block.text.replace(bullets, '').replace(/[:：]$/, '').trim();
+    const isDate = labels.date.test(label);
+    const isCost = /^(?:지원|총|신청|납부)?\s*(?:금액|비용|요금|수수료|부담금)$/.test(label);
+    const isMaterial = /^(?:제출\s*(?:서류|자료)|구비\s*서류)$/.test(label);
+    const value = next?.text ?? '';
+    const matched = (isDate && dateValue.test(value) && /[:：]$/.test(block.text)) ||
+      (isCost && factScore('cost', value)) || (isMaterial && material.test(value));
+    if (matched && next.page === block.page &&
+        !/[:：](?!\d)|^\d+[.)]\s+[가-힣]|^[□■]/.test(value)) {
+      result.push({ ...block, id: block.id + '–' + next.id, text: label + ': ' + value });
+      i++;
+    } else result.push(block);
+  }
+  return result;
+}
 function factCandidates(blocks, id, pattern) {
   const matches = [];
   for (let i = 0; i < blocks.length; i++) {
@@ -190,7 +210,7 @@ export function summarize(document, purpose = 'GENERAL') {
   if (!PURPOSES[purpose]) throw new Error('요약 목적을 다시 선택해 주세요.');
   const source = validateDocument(document);
   const rules = [...RULES[purpose], EXCEPTIONS];
-  const blocks = contentBlocks(source.blocks);
+  const blocks = joinLabelValues(contentBlocks(source.blocks));
   const grouped = purpose === 'SUPPORT' ? supportGroups(blocks) : null;
   const sections = rules.map(([id, title, pattern]) => {
     const entries = grouped?.get(id) || [];
