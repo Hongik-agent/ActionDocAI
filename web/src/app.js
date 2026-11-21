@@ -1,3 +1,4 @@
+import {copyControl,sectionText,reportText} from './copy.js';
 import {aiItems,initializeAi,resetAi} from './ai.js';
 import { PURPOSES, blocksFromText, validateDocument, summarize, location, reportMarkdown } from './summary.js';
 import { readFile } from './read.js';
@@ -24,11 +25,13 @@ function setBusy(value) {
 }
 function evidence(block) { const el = node('div', 'evidence'); el.append(node('span', 'location', location(block)), node('div', '', block.text)); return el; }
 function render(doc) {
+  $('copy-all-slot').replaceChildren(copyControl(()=>reportText(report,aiItems()),'전체 복사','정리 결과 전체 복사'));
   $('result-meta').textContent = `${doc.name} · ${doc.pages ? `${doc.pages}쪽` : '원본 쪽 번호 없음'} · ${doc.characters.toLocaleString()}자 · ${PURPOSES[report.purpose][0]} · 무료 기본 정리`;
   $('warnings').replaceChildren(...report.warnings.map(w => node('p', '', w)));
   $('sections').replaceChildren();
   for (const section of report.sections) {
-    const card = node('article', 'section-card'); card.append(node('h3', '', section.title));
+    const card = node('article', 'section-card'), heading=node('div','section-heading');
+    heading.append(node('h3','',section.title),copyControl(()=>sectionText(section),'복사',section.title+' 복사'));card.append(heading);
     for (const block of section.excerpts) {
       const p = node('p', 'excerpt', block.text); p.append(node('span', 'location', location(block))); card.append(p);
     }

@@ -1,3 +1,4 @@
+import {copyControl,aiText} from './copy.js';
 import {createClient} from '@supabase/supabase-js';
 import {location} from './summary.js';
 const $=id=>document.getElementById(id);
@@ -82,7 +83,13 @@ async function run() {
       details.append(Object.assign(document.createElement('summary'),{textContent:'원문 근거 · '+item.blocks.map(location).join(', ')}),...item.blocks.map(block=>Object.assign(document.createElement('blockquote'),{textContent:block.text})));
       article.append(Object.assign(document.createElement('p'),{textContent:item.statement}),details);groups.get(item.section).append(article);
     }
-    $('ai-output').replaceChildren(...groups.values());
+    for(const [section,group] of groups){
+      const header=document.createElement('div');header.className='section-heading';
+      if(group.firstElementChild?.tagName==='H3')header.append(group.firstElementChild);
+      header.append(copyControl(()=>aiText(job.items.filter(i=>i.section===section)),'복사',(section||'AI 요약 항목')+' 복사'));
+      group.prepend(header);
+    }
+    $('ai-output').replaceChildren(copyControl(()=>aiText(job.items),'AI 전체 복사','AI 상세 요약 전체 복사'),...groups.values());
     $('ai-status').textContent=data.status==='cached'?'저장된 요약을 다시 표시했습니다. 무료 횟수는 차감되지 않습니다.':'AI 요약 완료 · 금액과 기한은 인용된 근거와 함께 확인해 주세요.';
   } catch(e) {if(job===current)$('ai-status').textContent=(messages[e.message]||messages.unavailable)+' 기본 정리를 확인해 주세요.';}
   finally {running=false;$('ai-run').disabled=!current;}
