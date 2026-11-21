@@ -75,6 +75,15 @@ class AiProviderTests {
         var doc=new Document("long","긴 문서","PDF",7,33000,"",blocks,List.of(),List.of());var all=extraction();var first=json.createObjectNode();var f=all.path("facts").get(0).deepCopy();((ArrayNode)f.path("blockIds")).removeAll().add("b2");first.putArray("facts").add(all.path("facts").get(0)).add(f);var second=json.createObjectNode();var rest=second.putArray("facts");for(int i=1;i<4;i++)rest.add(all.path("facts").get(i));
         var a=provider(first,second,report(),audit()).service.analyze(doc,PROFILE,"ai",true);assertEquals(4,a.facts().size());assertTrue(a.warnings().stream().anyMatch(w->w.contains("원문 근거를 검증하지 못한")));
     }
+    @Test void reportShapeIsLeftToTheModel()throws Exception{
+        var source=document();var blocks=new ArrayList<>(source.blocks());for(int i=5;i<=13;i++)blocks.add(new Block("b"+i,1,"항목 "+i+"에 대한 안내입니다."));var doc=new Document(source.id(),source.name(),source.type(),1,source.characters(),source.markdown(),blocks,source.warnings(),List.of());
+        var e=extraction();var facts=(ArrayNode)e.path("facts");for(int i=4;i<101;i++){var f=facts.addObject().put("category","other").put("topic","항목").put("statement",AGE);f.putArray("blockIds").add("b1");}
+        var wide=((ObjectNode)facts.get(100));var ids=(ArrayNode)wide.putArray("blockIds");for(int i=1;i<=13;i++)ids.add("b"+i);
+        var r=report();var sections=(ArrayNode)r.path("sections");for(int i=2;i<=9;i++){var s=sections.addObject().put("id","s"+i).put("title","추가 구간").put("body",AGE);s.putArray("factIds").add("f1");}
+        var actions=(ArrayNode)r.path("actions");for(int i=2;i<=6;i++)action(actions,"check"+i,"추가 확인","대상 조건을 확인하세요.","CHECK",null,"f1");
+        var a=json.createObjectNode();var verdicts=a.putArray("verdicts");for(var id:List.of("overview","region","age","income","house"))verdicts.addObject().put("id",id).put("supported",true);for(int i=1;i<=9;i++)verdicts.addObject().put("id","s"+i).put("supported",true);for(int i=1;i<=6;i++)verdicts.addObject().put("id",i==1?"check":"check"+i).put("supported",true);for(int i=1;i<=101;i++)verdicts.addObject().put("id","fact-f"+i).put("supported",true);
+        var result=provider(e,r,a).service.analyze(doc,PROFILE,"ai",true);assertEquals(9,result.sections().size());assertEquals(101,result.facts().size());assertEquals(13,result.facts().get(100).evidence().size());
+    }
     @Test void changingCurrencyUnitWithSameNumberIsRejected(){assertFalse(NumberCheck.supported("1억원 지원",List.of(new Evidence("b1",1,"1만원 지원"))));assertTrue(NumberCheck.supported("최대 1억원",List.of(new Evidence("b1",1,"최대 1억원까지 대출 가능"))));}
     @Test void longDocumentIsFullyExtractedBeforeOneCrossPartSynthesis()throws Exception{
         var blocks=new ArrayList<Block>();blocks.add(new Block("b1",1,AGE));blocks.add(new Block("padding",2,"가".repeat(32000-AGE.length())));blocks.add(new Block("b2",6,REGION));blocks.add(new Block("b3",6,INCOME));blocks.add(new Block("b4",7,PERIOD));
