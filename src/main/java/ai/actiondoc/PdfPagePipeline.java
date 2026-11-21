@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.Consumer;
+import java.util.function.*;
 import org.apache.pdfbox.pdmodel.*;
 import org.apache.pdfbox.rendering.*;
 
@@ -13,8 +13,9 @@ import org.apache.pdfbox.rendering.*;
 final class PdfPagePipeline {
     record Page(int number,String text,List<String> links,OcrService.Result ocr,boolean blank) {}
     static final int MAX_IN_FLIGHT=2;
+    static final String CANCELLED="문서 읽기를 취소했습니다.";
 
-    static void read(PDDocument pdf,OcrService ocr,Consumer<Page> consume,Consumer<Models.DocumentProgress> progress) throws IOException {
+    static void read(PDDocument pdf,OcrService ocr,Consumer<Page> consume,Consumer<Models.DocumentProgress> progress,BooleanSupplier cancelled) throws IOException {
         var workers=Executors.newFixedThreadPool(MAX_IN_FLIGHT,r->{var thread=new Thread(r,"actiondoc-pdf-ocr");thread.setDaemon(true);return thread;});
         var pending=new ArrayDeque<Future<Page>>();
         var renderer=new PDFRenderer(pdf);renderer.setSubsamplingAllowed(true);
@@ -24,9 +25,10 @@ final class PdfPagePipeline {
         try {
             for(int number=1;number<=pages;number++) {
                 if(pending.size()==MAX_IN_FLIGHT) {
-                    consume.accept(await(pending.removeFirst(),started));
+                    consume.accept(await(pending.removeFirst(),started,cancelled));
                     progress.accept(state(++completed,pages));
                 }
+                if(cancelled.getAsBoolean())throw new IllegalArgumentException(CANCELLED);
                 if(System.nanoTime()-started>Duration.ofMinutes(8).toNanos())throw timeout();
                 String text=PdfLines.join(LayoutTextStripper.lines(pdf,number));
                 PDPage page=pdf.getPage(number-1);
@@ -68,7 +70,7 @@ final class PdfPagePipeline {
                 }
             }
             while(!pending.isEmpty()) {
-                consume.accept(await(pending.removeFirst(),started));
+                consume.accept(await(pending.removeFirst(),started,cancelled));
                 progress.accept(state(++completed,pages));
             }
         } finally {
@@ -81,14 +83,18 @@ final class PdfPagePipeline {
     private static Models.DocumentProgress state(int completed,int total) {
         return new Models.DocumentProgress("READING",completed,total,"PDF "+completed+" / "+total+"쪽 읽음 · 이미지 페이지는 자동 OCR 처리 중");
     }
-    private static Page await(Future<Page> task,long started) throws IOException {
+    private static Page await(Future<Page> task,long started,BooleanSupplier cancelled) throws IOException {
         try {
-            long remaining=Duration.ofMinutes(8).toNanos()-(System.nanoTime()-started);
-            if(remaining<=0)throw timeout();
-            return task.get(remaining,TimeUnit.NANOSECONDS);
+            // Waits in one-second slices so a cancel request stops the read within about a second.
+            while(true) {
+                if(cancelled.getAsBoolean()){task.cancel(true);throw new IllegalArgumentException(CANCELLED);}
+                long remaining=Duration.ofMinutes(8).toNanos()-(System.nanoTime()-started);
+                if(remaining<=0){task.cancel(true);throw timeout();}
+                try{return task.get(Math.min(remaining,TimeUnit.SECONDS.toNanos(1)),TimeUnit.NANOSECONDS);}catch(TimeoutException e){}
+            }
         } catch(InterruptedException e){task.cancel(true);Thread.currentThread().interrupt();throw new IllegalArgumentException("PDF 처리가 중단되었습니다. 다시 시도해 주세요.");}
-        catch(TimeoutException e){task.cancel(true);throw timeout();}
         catch(ExecutionException e){
+            if(cancelled.getAsBoolean())throw new IllegalArgumentException(CANCELLED);
             if(e.getCause() instanceof IllegalArgumentException invalid)throw invalid;
             if(e.getCause() instanceof IOException io)throw io;
             throw new IllegalArgumentException("PDF OCR을 완료하지 못했습니다. 다시 시도해 주세요.");

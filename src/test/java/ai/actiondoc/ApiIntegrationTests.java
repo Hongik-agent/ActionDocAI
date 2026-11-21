@@ -31,6 +31,18 @@ class ApiIntegrationTests {
         mvc.perform(multipart("/api/documents").file(HwpDocumentTests.upload(new byte[]{1,2,3})).param("progressId",id).session(session).header("X-CSRF-Token",token)).andExpect(status().isBadRequest());
         mvc.perform(get("/api/documents/progress/"+id).session(session)).andExpect(status().isOk()).andExpect(jsonPath("$.phase").value("FAILED"));
     }
+    @Test void cancelEndpointMarksProgress() throws Exception {
+        var initial=mvc.perform(get("/api/config")).andReturn();
+        var session=(MockHttpSession)initial.getRequest().getSession();
+        String token=json.readTree(initial.getResponse().getContentAsString()).path("csrf").asText();
+        String id=java.util.UUID.randomUUID().toString();
+        mvc.perform(delete("/api/documents/progress/"+id).session(session)).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/documents/progress/invalid").session(session).header("X-CSRF-Token",token)).andExpect(status().isBadRequest());
+        mvc.perform(delete("/api/documents/progress/"+id).session(session).header("X-CSRF-Token",token)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("cancelled"));
+        mvc.perform(multipart("/api/documents").param("text","테스트 본문").param("progressId",id).session(session).header("X-CSRF-Token",token))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("문서 읽기를 취소했습니다."));
+        mvc.perform(multipart("/api/documents").param("text","테스트 본문").param("progressId",java.util.UUID.randomUUID().toString()).session(session).header("X-CSRF-Token",token)).andExpect(status().isOk());
+    }
     @Test void summaryPurposePassesThroughApiAndRejectsUnknownValues() throws Exception {
         var initial=mvc.perform(get("/api/config")).andReturn();
         var session=(MockHttpSession)initial.getRequest().getSession();

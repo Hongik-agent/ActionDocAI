@@ -51,6 +51,29 @@ class OcrDocumentTests {
             assertTrue(cancelled.await(2,java.util.concurrent.TimeUnit.SECONDS));
         }
     }
+    @Test void cancelDuringOcrStopsWorkersAndNextReadWorks()throws Exception{
+        var cancel=new java.util.concurrent.atomic.AtomicBoolean();var blocking=new java.util.concurrent.atomic.AtomicBoolean(true);
+        var interrupted=new java.util.concurrent.CountDownLatch(1);var cancelledAt=new java.util.concurrent.atomic.AtomicLong();
+        OcrService waiting=new OcrService(""){@Override public Result recognize(BufferedImage image,int page){
+            if(!blocking.get())return new Result("Monthly fee 36,300 KRW",.95,0);
+            if(cancel.compareAndSet(false,true))cancelledAt.set(System.nanoTime());
+            try{Thread.sleep(30_000);throw new AssertionError("OCR worker was not interrupted");}
+            catch(InterruptedException e){interrupted.countDown();Thread.currentThread().interrupt();throw new IllegalArgumentException("OCR이 중단되었습니다. 다시 시도해 주세요.");}
+        }};
+        var service=new DocumentService(waiting);
+        try(var pdf=new PDDocument()){
+            scanPage(pdf,false);scanPage(pdf,false);
+            var error=assertThrows(IllegalArgumentException.class,()->service.normalize(file(pdf),null,p->{},cancel::get));
+            assertEquals("문서 읽기를 취소했습니다.",error.getMessage());
+            assertTrue(System.nanoTime()-cancelledAt.get()<2_000_000_000L);
+            assertTrue(interrupted.await(2,java.util.concurrent.TimeUnit.SECONDS));
+        }
+        blocking.set(false);
+        try(var pdf=new PDDocument()){
+            scanPage(pdf,false);
+            assertTrue(service.normalize(file(pdf),null).markdown().contains("36,300"));
+        }
+    }
     private BufferedImage scan(){
         var image=new BufferedImage(900,1300,BufferedImage.TYPE_INT_RGB);var g=image.createGraphics();g.setColor(Color.WHITE);g.fillRect(0,0,900,1300);g.setColor(Color.BLACK);g.setFont(new Font("SansSerif",Font.PLAIN,30));g.drawString("Monthly fee 36,300 KRW",60,150);g.dispose();return image;
     }
