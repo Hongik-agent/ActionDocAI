@@ -5,16 +5,17 @@ try FileManager.default.createDirectory(at:directory,withIntermediateDirectories
 for size in [16,32,128,256,512] {
     for scale in [1,2] {
         let pixels=size*scale
-        let image=NSImage(size:NSSize(width:pixels,height:pixels))
-        image.lockFocus()
+        // Draw into a bitmap of exact pixel size; NSImage.lockFocus would follow the display's backing scale.
+        let bitmap=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:pixels,pixelsHigh:pixels,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
+        bitmap.size=NSSize(width:pixels,height:pixels)
+        NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=NSGraphicsContext(bitmapImageRep:bitmap)
         let rect=NSRect(x:Double(pixels)*0.06,y:Double(pixels)*0.06,width:Double(pixels)*0.88,height:Double(pixels)*0.88)
         NSColor(srgbRed:0.23,green:0.34,blue:0.85,alpha:1).setFill()
         NSBezierPath(roundedRect:rect,xRadius:Double(pixels)*0.2,yRadius:Double(pixels)*0.2).fill()
         let symbol=NSImage(systemSymbolName:"doc.text.magnifyingglass",accessibilityDescription:nil)!.withSymbolConfiguration(.init(pointSize:Double(pixels)*0.49,weight:.medium))!
         let tinted=NSImage(size:symbol.size);tinted.lockFocus();NSColor.white.setFill();NSRect(origin:.zero,size:symbol.size).fill();symbol.draw(at:.zero,from:.zero,operation:.destinationIn,fraction:1);tinted.unlockFocus()
         tinted.draw(in:NSRect(x:Double(pixels)*0.25,y:Double(pixels)*0.24,width:Double(pixels)*0.5,height:Double(pixels)*0.52))
-        image.unlockFocus()
-        let bitmap=NSBitmapImageRep(data:image.tiffRepresentation!)!
+        NSGraphicsContext.restoreGraphicsState()
         let png=bitmap.representation(using:.png,properties:[:])!
         let name="icon_\(size)x\(size)\(scale==2 ? "@2x":"").png"
         try png.write(to:directory.appendingPathComponent(name))

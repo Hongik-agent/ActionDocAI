@@ -18,5 +18,11 @@ xcrun swiftc -swift-version 5 -parse-as-library -O -module-cache-path "$build_di
 mv "$build_dir/ActionDoc.next" "$app_dir/Contents/MacOS/ActionDoc"
 mv "$build_dir/actiondoc-ocr.next" "$app_dir/Contents/Resources/actiondoc-ocr"
 cp "$project_dir/desktop/Info.plist" "$app_dir/Contents/Info.plist"
+# A fresh checkout has no bundle yet, so draw the icon instead of relying on a previous build.
+if [ ! -f "$app_dir/Contents/Resources/AppIcon.icns" ]; then
+ xcrun swiftc -swift-version 5 -module-cache-path "$build_dir/module-cache" -target arm64-apple-macos14.0 -framework AppKit "$project_dir/desktop/Icon.swift" -o "$build_dir/icon-gen"
+ "$build_dir/icon-gen" "$build_dir/AppIcon.iconset"
+ cp "$build_dir/AppIcon.icns" "$app_dir/Contents/Resources/AppIcon.icns"
+fi
 codesign --force --deep --sign - "$app_dir"
 "$app_dir/Contents/MacOS/ActionDoc" --self-test
