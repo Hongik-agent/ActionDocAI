@@ -88,8 +88,33 @@ $('summarize').onclick = async () => {
 $('cancel').onclick = () => reading?.abort(new Error('문서 읽기를 취소했습니다.'));
 $('download').onclick = () => {
   if (!report) return;
-  const url = URL.createObjectURL(new Blob([reportMarkdown(report, aiItems())], { type: 'text/markdown;charset=utf-8' }));
-  const link = document.createElement('a'); link.href = url; link.download = 'ActionDoc-정리.md'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  saveBlob(new Blob([reportMarkdown(report, aiItems())], {type:'text/markdown;charset=utf-8'}), 'ActionDoc-정리.md');
 };
-
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+$('pdf-markdown').onclick = async () => {
+  if (busy || !selected) return;
+  setBusy(true);
+  $('error').hidden = true;
+  $('progress').textContent = 'PDF 전체 변환을 준비하고 있어요…';
+  reading = new AbortController();
+  try {
+    const blob = await readFile(selected, message => { $('progress').textContent = message; }, reading.signal, {
+      wholeMarkdown: true, fast: $('pdf-fast').checked
+    });
+    saveBlob(blob, selected.name.replace(/\.pdf$/i, '.md'));
+    $('progress').textContent = 'PDF 전체 본문을 변환해 다운로드를 시작했습니다.';
+  } catch (reason) {
+    error(reason.message || 'PDF 전체 변환에 실패했습니다.');
+    $('progress').textContent = '';
+  } finally {
+    setBusy(false);
+  }
+};
 void initializeAi();

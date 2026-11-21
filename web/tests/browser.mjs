@@ -39,8 +39,14 @@ try {
   assert.match(await page.locator('#warnings').innerText(), /484쪽 중 원본 480–484쪽/);
   await page.locator('.source-panel summary').click();
   await page.waitForSelector("#source .evidence");
-  const excerpt = await page.locator('#source').innerText();
+  const excerpt = await page.locator('#source').textContent();
   assert.match(excerpt,/Page 484:/); assert.doesNotMatch(excerpt,/Page 479:/);
+  const exported = page.waitForEvent('download');
+  await page.click('#pdf-markdown');
+  const md = await readFile(await (await exported).path(), 'utf8');
+  assert.equal(md.match(/^## [0-9]+쪽$/gm).length, 484);
+  assert.match(md, /Page 1:/);
+  assert.match(md, /Page 484:/);
   await page.fill('#pdf-start','400'); await page.fill('#pdf-end','484'); await page.click('#summarize');
   await page.waitForSelector("#error:not([hidden])");
   assert.match(await page.locator('#error').innerText(), /1~50쪽/);
@@ -62,7 +68,7 @@ try {
   assert.match(await page.locator('#warnings').innerText(),/OCR 인식 쪽: 1/);
   await page.locator('.source-panel summary').click();
   await page.waitForSelector('#source .evidence');
-  assert.match(await page.locator('#source').innerText(),/500,000/);
+  assert.match(await page.locator('#source').textContent(),/500,000/);
   // Parallel OCR keeps page order, block numbering and per-page warnings.
   const multi = await browser.newPage();
   await multi.setContent('<style>canvas{display:block;break-after:page}</style>'+[1,2,3,4,5].map(()=>'<canvas width="1000" height="200"></canvas>').join(''));
@@ -76,10 +82,10 @@ try {
   assert.match(await page.locator('#warnings').innerText(),/OCR 인식 쪽: 1, 2, 3, 4, 5\./);
   await page.locator('.source-panel summary').click();
   await page.waitForSelector('#source .evidence');
-  const multiText = await page.locator('#source').innerText();
+  const multiText = await page.locator('#source').textContent();
   const order = [1,2,3,4,5].map(n => multiText.search(new RegExp(`PAGE\\s*${n}\\b`)));
   assert.ok(order.every((v,i)=>v>=0 && (i===0 || v>order[i-1])), 'OCR pages out of order: '+multiText);
-  for (const [i, el] of (await page.locator('#source .location').allInnerTexts()).entries()) assert.match(el, new RegExp(`· b${i+1}$`));
+  for (const [i, el] of (await page.locator('#source .location').allTextContents()).entries()) assert.match(el, new RegExp(`· b${i+1}$`));
   // Enough native text: OCR reads only the large image and does not duplicate the page text.
   const mixed = await browser.newPage();
   await mixed.setContent('<p style="font-size:20px">Native notice text: submit the application form by March 20 at the office.</p><canvas width="1200" height="300"></canvas>');
@@ -95,7 +101,7 @@ try {
   assert.match(await page.locator('#warnings').innerText(),/OCR 인식 쪽: 1/);
   await page.locator('.source-panel summary').click();
   await page.waitForSelector('#source .evidence');
-  const mixedSource = await page.locator('#source').innerText();
+  const mixedSource = await page.locator('#source').textContent();
   assert.match(mixedSource,/700,?000/);
   assert.equal(mixedSource.match(/submit the application/g).length,1);
   await page.setInputFiles('#file',{name:'cancel.pdf',mimeType:'application/pdf',buffer:scan});
