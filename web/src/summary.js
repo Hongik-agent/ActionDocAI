@@ -38,7 +38,7 @@ export function blocksFromText(text, page = 0, offset = 0) {
 const bullets = /^[\s□■○●◦▪◆◇※*☞▶►•ㅇ#]+/;
 const listMarker = /^(?:[□■○●◦▪◆◇※*☞▶►•·ㅇ\-–—]|[①-⑳➀-➉]|\(?\d{1,2}[.)]|[가-하][.)]|[【\[<〈「『])/;
 // PDF text runs carry no spaces, and layout breaks split sentences; rebuild both from glyph positions.
-export function pdfPageText(items) {
+export function pdfLines(items) {
   const lines = []; let line = null;
   for (const item of items) {
     const str = item.str?.replace(/\u0000/g, '');
@@ -54,6 +54,11 @@ export function pdfPageText(items) {
     }
     line.text += str; line.right = Math.max(line.right, x + item.width);
   }
+  return lines;
+}
+// Joins lines {text,left,right,gap}; a letter-spaced heading is recognised from its text.
+export function joinLines(lines) {
+  if (!lines.length) return '';
   // Letter-spaced headings such as '사 업 명' read as one word, and never continue into the next line.
   const spaced = /(?<=^|\s)[가-힣](?: [가-힣]){2,}(?=[\s:：]|$)/g;
   const texts = lines.map(l => l.text.replace(/\s+/g, ' ').trim().replace(spaced, m => (l.spaced = true, m.replace(/ /g, ''))));
@@ -69,6 +74,7 @@ export function pdfPageText(items) {
   });
   return out.join('\n');
 }
+export const pdfPageText = items => joinLines(pdfLines(items));
 export function validateDocument(document) {
   const size = document.blocks.reduce((sum, b) => sum + b.text.length, 0);
   if (!size) throw new Error('읽을 수 있는 본문이 없습니다. 원본 상태를 확인하거나 텍스트를 붙여넣어 주세요.');

@@ -8,6 +8,7 @@ import Foundation
     private(set) var aiConfigured=false
     private(set) var hosted=false
     private(set) var analysesRemaining:Int?
+    private(set) var currentProgressId:String?
     init(base:URL,token:String=""){
         self.base=base;desktopToken=token
         let configuration=URLSessionConfiguration.ephemeral;configuration.httpShouldSetCookies=true;configuration.timeoutIntervalForRequest=100;configuration.timeoutIntervalForResource=1500
@@ -32,10 +33,11 @@ import Foundation
         return data
     }
     func document(file:URL?,text:String,onProgress:((DocumentProgress)->Void)?=nil) async throws -> SourceDocument {
+        // Set before any await so a cancel during bootstrap or upload still reaches the server.
+        let progressId=UUID().uuidString;currentProgressId=progressId;defer{currentProgressId=nil}
         try await bootstrap()
         let boundary="ActionDoc-\(UUID().uuidString)";var body=Data()
         func append(_ text:String) { body.append(Data(text.utf8)) }
-        let progressId=UUID().uuidString
         append("--\(boundary)\r\nContent-Disposition: form-data; name=\"progressId\"\r\n\r\n\(progressId)\r\n")
         if let file {
             let resource=try file.resourceValues(forKeys:[.fileSizeKey,.isRegularFileKey])
@@ -60,6 +62,10 @@ import Foundation
         }
         defer{poller.cancel()}
         return try JSONDecoder().decode(SourceDocument.self,from:await request("/api/documents",method:"POST",body:body,type:"multipart/form-data; boundary=\(boundary)"))
+    }
+    func cancelDocument() async {
+        guard let id=currentProgressId else{return}
+        _ = try? await request("/api/documents/progress/"+id,method:"DELETE")
     }
     func analyze(doc:SourceDocument,context:String,ai:Bool,consent:Bool,engine:String?=nil,purpose:String="GENERAL") async throws -> AnalysisReport {
         try await bootstrap()

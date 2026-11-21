@@ -100,3 +100,23 @@ let sampleNotice = """
 가입 기간 24개월 이상이면 월 3,300원의 할인을 받을 수 있습니다.
 신청서를 제출하지 않으면 할인이 적용되지 않아 기본 요금이 청구됩니다.
 """
+extension AnalysisReport {
+    func markdown(document:SourceDocument)->String {
+        let one={(t:String)->String in t.split(whereSeparator:\.isNewline).joined(separator:" ")}
+        // multi-line text keeps its breaks; a line starting with # is escaped so it cannot become a heading
+        let lf={(t:String)->String in t.replacingOccurrences(of:"\r\n",with:"\n").replacingOccurrences(of:"\r",with:"\n")}
+        let body={(t:String)->String in lf(t).split(separator:"\n",omittingEmptySubsequences:false).map{(l:Substring)->String in let rest=l.drop(while:{$0==" "});return rest.hasPrefix("#") ? String(l.prefix(l.count-rest.count))+"\\"+rest:String(l)}.joined(separator:"\n")}
+        let quote={(e:Evidence)->String in "> 원문 근거 (\(SourceLocation.page(e.page)) · \(one(e.blockId))): "+lf(e.quote).replacingOccurrences(of:"\n",with:"\n> ")}
+        let status=["MATCH":"조건 일치","MISMATCH":"조건 불일치","UNKNOWN":"추가 확인","IRRELEVANT":"관련 조건 없음"]
+        var out=["# \(one(title))"]
+        if let overview,!overview.isEmpty{out.append(body(overview))}
+        out+=warnings.map{"주의: \(one($0))"}
+        if let checks=personalChecks,!checks.isEmpty{out.append("## 내 상황과 비교");out+=checks.map{"- \(one($0.criterion)) (\(status[$0.status] ?? "추가 확인")): \(one($0.reason))"}}
+        for s in sections ?? []{out.append("## \(one(s.title))");out.append(body(s.body));out+=s.evidence.map(quote)}
+        let actions=findings.filter{$0.category=="action"}
+        if !actions.isEmpty{out.append("## 할 일");out+=actions.map{"- \(one($0.title))"+($0.date.map{" (\($0))"} ?? "")+": \(one($0.detail))"}}
+        // source page headings (## 본문, ## N페이지) go one level under 원문
+        out.append("## 원문\n\n"+lf(document.markdown).split(separator:"\n",omittingEmptySubsequences:false).map{$0.hasPrefix("## ") ? "#"+String($0):String($0)}.joined(separator:"\n"))
+        return out.joined(separator:"\n\n")+"\n"
+    }
+}

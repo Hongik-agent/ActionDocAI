@@ -10,10 +10,11 @@ import java.util.regex.*;
 final class ActionRoutes {
     private static final Pattern WEB=Pattern.compile("(?i)(?<![a-z0-9_./:@-])((?:(?:https?://|www\\.)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+(?:go\\.kr|or\\.kr|co\\.kr|ac\\.kr|com|org|net|kr|io|app|dev|edu))(?:(?:/|\\?|#)[a-z0-9._~:/?#\\[\\]@!$&'()*+,;=%-]*)?)(?![a-z0-9_-])");
     private static final Pattern EMAIL=Pattern.compile("(?i)(?<![a-z0-9._%+-])([a-z0-9][a-z0-9._%+-]{0,63}@[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\\.[a-z]{2,24})(?![a-z0-9_%+-])");
-    private static final Pattern PHONE=Pattern.compile("(?<![0-9])((?:0(?:2|[3-6][1-5]|70|10)[- ](?:[0-9]{3,4}[- ][0-9]{4}|120)|1[568][0-9]{2}[- ][0-9]{4})(?:\\s*[~～]\\s*[0-9]{1,4})?)(?![0-9])");
+    // Korean numbering: area/mobile/internet prefixes, area code + 120 (local-government call centers), 15xx/16xx/18xx nationwide numbers.
+    private static final Pattern PHONE=Pattern.compile("(?<![0-9])((?:0(?:2|[3-6][1-5]|70|10)[- ](?:[0-9]{3,4}[- ][0-9]{4}|120)|1[568][0-9]{2}[- ][0-9]{4})(?:\\s*"+DateWindow.RANGE+"\\s*[0-9]{1,4})?)(?![0-9])");
     static List<ActionRoute> extract(Document doc,Analysis report){
         LinkedHashMap<String,ActionRoute> result=new LinkedHashMap<>();String end=null;
-        for(var b:doc.blocks())if(b.text().replaceAll("\\s+","").matches(".*(신청기간|접수기간|모집기간).*")){var range=NoticeReport.DateWindow.parse(b.text());if(range!=null){end=range.end().toString();break;}}
+        for(var b:doc.blocks())if(b.text().replaceAll("\\s+","").matches(".*(신청기간|접수기간|모집기간).*")){var range=DateWindow.parse(b.text());if(range!=null){end=range.end().toString();break;}}
         boolean closed="CLOSED".equals(report.periodStatus())||(end!=null&&LocalDate.parse(end).isBefore(LocalDate.now(ZoneId.of("Asia/Seoul"))));
         for(int i=0;i<doc.blocks().size();i++){
             var b=doc.blocks().get(i);String context=context(doc.blocks(),i);Matcher urls=WEB.matcher(b.text());
@@ -41,8 +42,8 @@ final class ActionRoutes {
             Matcher phones=PHONE.matcher(b.text());while(phones.find()){
                 if(b.text().matches(".*(신청자|신청인|성명|생년월일|작성예).*"))continue;
                 if(!context.matches("(?is).*(문의|담당|고객센터|콜센터|전화|☎|tel).*"))continue;
-                String raw=phones.group(1),first=raw.split("[~～]",2)[0].replaceAll("[^0-9]","");
-                String hint="전화 앱에서 번호를 확인한 뒤 직접 통화하세요.";if(raw.matches(".*[~～].*"))hint="원문에 번호 범위가 있어 첫 번째 번호를 연결합니다. "+hint;
+                String raw=phones.group(1),first=raw.split(DateWindow.RANGE,2)[0].replaceAll("[^0-9]","");
+                String hint="전화 앱에서 번호를 확인한 뒤 직접 통화하세요.";if(raw.matches(".*"+DateWindow.RANGE+".*"))hint="원문에 번호 범위가 있어 첫 번째 번호를 연결합니다. "+hint;
                 put(result,new ActionRoute(id("PHONE",first),"PHONE","문의 전화","tel:"+first,raw,hint,"","AVAILABLE",null,List.of(evidence(b))));
             }
         }
@@ -67,6 +68,7 @@ final class ActionRoutes {
     }
     private static void put(Map<String,ActionRoute> out,ActionRoute route){
         String key=route.kind()+":"+route.url();var old=out.get(key);
+        // Bounds what a link-heavy document puts on screen; earlier (higher in the document) routes win.
         if(old==null){if(out.size()<24)out.put(key,route);return;}
         List<Evidence> sources=new ArrayList<>(old.evidence());for(var e:route.evidence())if(sources.stream().noneMatch(x->x.blockId().equals(e.blockId()))&&sources.size()<8)sources.add(e);
         String nav=old.navigation().isBlank()?route.navigation():old.navigation();

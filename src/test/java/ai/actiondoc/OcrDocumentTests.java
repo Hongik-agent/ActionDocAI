@@ -51,6 +51,29 @@ class OcrDocumentTests {
             assertTrue(cancelled.await(2,java.util.concurrent.TimeUnit.SECONDS));
         }
     }
+    @Test void cancelDuringOcrStopsWorkersAndNextReadWorks()throws Exception{
+        var cancel=new java.util.concurrent.atomic.AtomicBoolean();var blocking=new java.util.concurrent.atomic.AtomicBoolean(true);
+        var interrupted=new java.util.concurrent.CountDownLatch(1);var cancelledAt=new java.util.concurrent.atomic.AtomicLong();
+        OcrService waiting=new OcrService(""){@Override public Result recognize(BufferedImage image,int page){
+            if(!blocking.get())return new Result("Monthly fee 36,300 KRW",.95,0);
+            if(cancel.compareAndSet(false,true))cancelledAt.set(System.nanoTime());
+            try{Thread.sleep(30_000);throw new AssertionError("OCR worker was not interrupted");}
+            catch(InterruptedException e){interrupted.countDown();Thread.currentThread().interrupt();throw new IllegalArgumentException("OCR이 중단되었습니다. 다시 시도해 주세요.");}
+        }};
+        var service=new DocumentService(waiting);
+        try(var pdf=new PDDocument()){
+            scanPage(pdf,false);scanPage(pdf,false);
+            var error=assertThrows(IllegalArgumentException.class,()->service.normalize(file(pdf),null,p->{},cancel::get));
+            assertEquals("문서 읽기를 취소했습니다.",error.getMessage());
+            assertTrue(System.nanoTime()-cancelledAt.get()<2_000_000_000L);
+            assertTrue(interrupted.await(2,java.util.concurrent.TimeUnit.SECONDS));
+        }
+        blocking.set(false);
+        try(var pdf=new PDDocument()){
+            scanPage(pdf,false);
+            assertTrue(service.normalize(file(pdf),null).markdown().contains("36,300"));
+        }
+    }
     private BufferedImage scan(){
         var image=new BufferedImage(900,1300,BufferedImage.TYPE_INT_RGB);var g=image.createGraphics();g.setColor(Color.WHITE);g.fillRect(0,0,900,1300);g.setColor(Color.BLACK);g.setFont(new Font("SansSerif",Font.PLAIN,30));g.drawString("Monthly fee 36,300 KRW",60,150);g.dispose();return image;
     }
@@ -106,5 +129,77 @@ class OcrDocumentTests {
             OcrService failing=new OcrService(""){@Override public Result recognize(BufferedImage image,int page){throw new IllegalArgumentException("OCR 실패");}};
             assertThrows(IllegalArgumentException.class,()->new DocumentService(failing).normalize(file(pdf),null));
         }
+    }
+    private static final String SENTENCE="Please submit the signed application form before the end of this month.";
+    private record Seen(java.util.List<int[]> sizes,OcrService ocr){}
+    private Seen recording(String text){var sizes=java.util.Collections.synchronizedList(new java.util.ArrayList<int[]>());return new Seen(sizes,new OcrService(""){@Override public Result recognize(BufferedImage image,int page){var r=image.getRaster();int w=image.getWidth()-4,h=image.getHeight()-4;sizes.add(new int[]{image.getWidth(),image.getHeight(),Math.max(Math.max(r.getSample(3,3,0),r.getSample(w,3,0)),Math.max(r.getSample(3,h,0),r.getSample(w,h,0)))});return new Result(text,.95,0);}});}
+    private PDPage figurePage(PDDocument pdf,int rotation,int imageWidth,int imageHeight)throws Exception{
+        var page=new PDPage();page.setRotation(rotation);pdf.addPage(page);try(var c=new PDPageContentStream(pdf,page)){
+            c.beginText();c.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA),12);c.newLineAtOffset(50,730);c.showText(SENTENCE);c.endText();
+            c.drawImage(LosslessFactory.createFromImage(pdf,new BufferedImage(imageWidth,imageHeight,BufferedImage.TYPE_INT_RGB)),100,100,300,400);
+        }return page;
+    }
+    @Test void textPageWithLargeImageOcrsOnlyTheImage()throws Exception{
+        var seen=recording("Figure 1 monthly fee 36,300 KRW");
+        try(var pdf=new PDDocument()){
+            figurePage(pdf,0,900,1300);var doc=new DocumentService(seen.ocr()).normalize(file(pdf),null);
+            assertEquals(1,seen.sizes().size());int[] size=seen.sizes().get(0);
+            assertEquals(300*200/72.0,size[0],3);assertEquals(400*200/72.0,size[1],3);assertTrue(size[2]<50,"crop missed the figure");
+            assertTrue(doc.markdown().contains(SENTENCE));assertTrue(doc.markdown().contains("36,300 KRW"));
+        }
+    }
+    @Test void scannedPageOcrsTheWholePage()throws Exception{
+        var seen=recording("Monthly fee 36,300 KRW");
+        try(var pdf=new PDDocument()){
+            scanPage(pdf,false);new DocumentService(seen.ocr()).normalize(file(pdf),null);
+            assertEquals(1,seen.sizes().size());int[] size=seen.sizes().get(0);
+            assertEquals(612*200/72.0,size[0],3);assertEquals(792*200/72.0,size[1],3);
+        }
+    }
+    @Test void textOnlyPageSkipsOcr()throws Exception{
+        var seen=recording("unused");
+        try(var pdf=new PDDocument()){
+            textPage(pdf,SENTENCE);figurePage(pdf,0,100,100);var doc=new DocumentService(seen.ocr()).normalize(file(pdf),null);
+            assertEquals(0,seen.sizes().size());assertTrue(doc.ocrPages().isEmpty());
+        }
+    }
+    @Test void rotatedPageCropsTheImageRegion()throws Exception{
+        var seen=recording("Figure 1 monthly fee 36,300 KRW");
+        try(var pdf=new PDDocument()){
+            figurePage(pdf,90,900,1300);new DocumentService(seen.ocr()).normalize(file(pdf),null);
+            assertEquals(1,seen.sizes().size());int[] size=seen.sizes().get(0);
+            assertEquals(400*200/72.0,size[0],3);assertEquals(300*200/72.0,size[1],3);assertTrue(size[2]<50,"crop missed the figure");
+        }
+    }
+    @Test void figureWithoutTextKeepsTheNativeText()throws Exception{
+        var seen=recording("");
+        try(var pdf=new PDDocument()){
+            figurePage(pdf,0,900,1300);var doc=new DocumentService(seen.ocr()).normalize(file(pdf),null);
+            assertEquals(1,seen.sizes().size());assertTrue(doc.ocrPages().isEmpty());assertTrue(doc.markdown().contains(SENTENCE));
+        }
+    }
+    @Test void shortTextWithTinyImageSkipsOcrAndKeepsTheText()throws Exception{
+        var seen=recording("");
+        try(var pdf=new PDDocument()){
+            var page=new PDPage();pdf.addPage(page);try(var c=new PDPageContentStream(pdf,page)){
+                c.beginText();c.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA),12);c.newLineAtOffset(50,730);c.showText("Agenda");c.endText();
+                c.drawImage(LosslessFactory.createFromImage(pdf,new BufferedImage(8,8,BufferedImage.TYPE_INT_RGB)),40,730,4,4);
+            }
+            var doc=new DocumentService(seen.ocr()).normalize(file(pdf),null);
+            assertEquals(0,seen.sizes().size());assertTrue(doc.markdown().contains("Agenda"));
+        }
+    }
+    @Test void scannedPageWithUnreadableOcrStillFails()throws Exception{
+        try(var pdf=new PDDocument()){
+            scanPage(pdf,false);
+            var error=assertThrows(IllegalArgumentException.class,()->new DocumentService(recording("").ocr()).normalize(file(pdf),null));
+            assertTrue(error.getMessage().contains("1페이지를 자동 OCR로 처리했지만 읽을 수 있는 텍스트를 확보하지 못했습니다"));
+        }
+    }
+    @Test void shortTextPaddedWithUnicodeSpacesAndAnImageIsScanned(){
+        // JS \s counts U+3000 and U+00A0 as space, so "Agenda" stays under 40 characters as in web read.js.
+        String padded="Agenda"+"\u3000\u00a0".repeat(20);
+        assertTrue(PdfPagePipeline.scanned(padded,true));assertFalse(PdfPagePipeline.scanned(padded,false));
+        assertFalse(PdfPagePipeline.scanned(SENTENCE,true));
     }
 }

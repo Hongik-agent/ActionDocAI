@@ -30,7 +30,7 @@ public class ApiController {
         java.util.function.Consumer<DocumentProgress> progress=p->{if(progressId!=null)remember(s,"documentProgress",progressId,p);};
         progress.accept(new DocumentProgress("READING",0,0,"문서를 열고 있어요…"));
         try {
-            Document doc=documents.normalize(file,text,progress); remember(s,"documents",doc.id(),doc);
+            Document doc=documents.normalize(file,text,progress,()->{if(progressId==null)return false;synchronized(s){return this.<Boolean>cache(s,"cancelledDocuments").containsKey(progressId);}}); remember(s,"documents",doc.id(),doc);
             progress.accept(new DocumentProgress("COMPLETE",doc.pages(),doc.pages(),"문서 읽기 완료 · 분석을 준비하고 있어요…"));
             return doc;
         }catch(Exception e){progress.accept(new DocumentProgress("FAILED",0,0,"문서 읽기를 완료하지 못했습니다."));throw e;}
@@ -38,6 +38,9 @@ public class ApiController {
     @GetMapping("/documents/progress/{id}") public DocumentProgress documentProgress(@PathVariable String id,HttpSession session) {
         validateProgressId(id);
         synchronized(session){return this.<DocumentProgress>cache(session,"documentProgress").getOrDefault(id,new DocumentProgress("WAITING",0,0,"파일을 전송하고 있어요…"));}
+    }
+    @DeleteMapping("/documents/progress/{id}") public Map<String,String> cancelDocument(@PathVariable String id,HttpSession session) {
+        validateProgressId(id); remember(session,"cancelledDocuments",id,Boolean.TRUE); return Map.of("status","cancelled");
     }
     private static void validateProgressId(String id){if(!id.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))throw new IllegalArgumentException("문서 처리 번호를 확인해 주세요.");}
     public record AnalyzeRequest(String documentId,String context,String mode,boolean consent,String purpose) {}

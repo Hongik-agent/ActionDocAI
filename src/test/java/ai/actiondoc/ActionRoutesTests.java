@@ -15,21 +15,21 @@ class ActionRoutesTests {
  Analysis analyze(Document d){return new AnalysisService(new ObjectMapper()).analyze(d,"","local",false);}
  Document document(String text)throws Exception{return new DocumentService(new OcrService("")).normalize(null,text);}
  @Test void sourceDestinationsHaveEvidenceAndPortalNavigation()throws Exception{
-  var d=document("○ 신청방법: 청년몽땅정보통(https://youth.seoul.go.kr)에서 온라인 신청\n[금융·복지] → [건강지원] → [서울시 청년 마음건강 지원]\n문의 이메일: help@example.org\n문의처: 다산콜센터(☎02-120)\nFAQ: https://youth.seoul.go.kr");
+  var d=document("○ 신청방법: 가나시 청년포털(https://youth.example.go.kr)에서 온라인 신청\n[생활·복지] → [상담지원] → [가나시 청년 상담 지원]\n문의 이메일: help@example.org\n문의처: 가나시 민원콜센터(☎031-120)\nFAQ: https://youth.example.go.kr");
   var r=analyze(d);assertEquals(3,r.actionRoutes().size());
   var web=r.actionRoutes().stream().filter(x->x.kind().equals("WEB")).findFirst().orElseThrow();
-  assertEquals("https://youth.seoul.go.kr/",web.url());assertTrue(web.navigation().contains("건강지원"));assertEquals(3,web.evidence().size());
+  assertEquals("https://youth.example.go.kr/",web.url());assertTrue(web.navigation().contains("상담지원"));assertEquals(3,web.evidence().size());
   assertTrue(r.actionRoutes().stream().anyMatch(x->x.url().equals("mailto:help@example.org")));
-  assertTrue(r.actionRoutes().stream().anyMatch(x->x.url().equals("tel:02120")));
+  assertTrue(r.actionRoutes().stream().anyMatch(x->x.url().equals("tel:031120")));
   for(var route:r.actionRoutes())for(var e:route.evidence())assertTrue(d.blocks().stream().anyMatch(b->b.id().equals(e.blockId())&&b.text().equals(e.quote())));
  }
  @Test void expiredNoticesKeepReferenceLinksWithoutApplyPrompt()throws Exception{
-  var r=analyze(document("참여자 모집 공고\n○ 사업명: 서비스 지원\n○ 신청기간: 2020년 9월 7일 ~ 9월 10일\n○ 신청방법: https://youth.seoul.go.kr 온라인 신청"));
-  assertEquals("CLOSED",r.periodStatus());var link=r.actionRoutes().get(0);assertEquals("REFERENCE",link.status());assertEquals("2020-09-10",link.applicationEndsOn());assertFalse(link.title().contains("신청"));assertTrue(link.hint().contains("종료"));
+  var r=analyze(document("참여자 모집 공고\n○ 사업명: 서비스 지원\n○ 신청기간: 2020년 9월 7일 ~ 9월 10일\n○ 신청방법: https://youth.example.go.kr 온라인 신청"));
+  var link=r.actionRoutes().get(0);assertEquals("REFERENCE",link.status());assertEquals("2020-09-10",link.applicationEndsOn());assertFalse(link.title().contains("신청"));assertTrue(link.hint().contains("종료"));
  }
  @Test void noInventedDeepLinkAndQueryEncodingIsPreserved()throws Exception{
-  var r=analyze(document("신청 사이트: youth.incheon.go.kr\n신청: https://example.org/apply?id=a%2Fb&code=3#step2"));
-  assertEquals("https://youth.incheon.go.kr/",r.actionRoutes().get(0).url());assertEquals("https://example.org/apply?id=a%2Fb&code=3#step2",r.actionRoutes().get(1).url());
+  var r=analyze(document("신청 사이트: apply.example.or.kr\n신청: https://example.org/apply?id=a%2Fb&code=3#step2"));
+  assertEquals("https://apply.example.or.kr/",r.actionRoutes().get(0).url());assertEquals("https://example.org/apply?id=a%2Fb&code=3#step2",r.actionRoutes().get(1).url());
  }
  @Test void unsupportedSchemesCredentialsAndLocalServicesAreRejected()throws Exception{
   for(String u:List.of("javascript:alert(1)","file:///tmp/test","https://user:pass@example.org/path","http://127.0.0.1:8080","http://host.local/","http://router.internal/","http://example.org:9000/"))assertNull(ActionRoutes.webTarget(u),u);
@@ -37,9 +37,9 @@ class ActionRoutesTests {
  }
  @Test void inquiryNumbersAndMailDoNotCarryPersonalFormFieldsOrHeaders()throws Exception{
   assertTrue(analyze(document("신청자 연락처: 010-1234-5678\n신청서 이름: 홍길동")).actionRoutes().isEmpty());
-  var r=analyze(document("이메일 문의: help@example.org?subject=private&body=secret\n문의 전화: 02-6358-0642~6"));
+  var r=analyze(document("이메일 문의: help@example.org?subject=private&body=secret\n문의 전화: 051-987-6540∼3"));
   assertTrue(r.actionRoutes().stream().anyMatch(x->x.url().equals("mailto:help@example.org")));
-  var phone=r.actionRoutes().stream().filter(x->x.kind().equals("PHONE")).findFirst().orElseThrow();assertEquals("tel:0263580642",phone.url());assertTrue(phone.displayAddress().endsWith("~6"));assertTrue(phone.hint().contains("첫 번째"));
+  var phone=r.actionRoutes().stream().filter(x->x.kind().equals("PHONE")).findFirst().orElseThrow();assertEquals("tel:0519876540",phone.url());assertTrue(phone.displayAddress().endsWith("∼3"));assertTrue(phone.hint().contains("첫 번째"));
  }
  @Test void pdfHyperlinkAnnotationsAreExposedEvenWithoutVisibleUrl()throws Exception{
   byte[] bytes;

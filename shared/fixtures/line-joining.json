@@ -1,0 +1,136 @@
+{
+ "cases": [
+  {
+   "name": "wrapped paragraph continues on the next line",
+   "lines": [
+    {
+     "text": "지원 대상은 사업장을 둔 중소기업이며 신청서와 증빙 서류를",
+     "left": 0,
+     "right": 585,
+     "gap": 0.0
+    },
+    {
+     "text": "함께 제출해야 합니다",
+     "left": 0,
+     "right": 200,
+     "gap": 0.0
+    }
+   ],
+   "expected": [
+    "지원 대상은 사업장을 둔 중소기업이며 신청서와 증빙 서류를 함께 제출해야 합니다"
+   ]
+  },
+  {
+   "name": "sentence end keeps lines apart",
+   "lines": [
+    {
+     "text": "신청은 온라인으로만 접수하며 방문 접수는 받지 않습니다.",
+     "left": 0,
+     "right": 585,
+     "gap": 0.0
+    },
+    {
+     "text": "문의는 담당 부서로 합니다",
+     "left": 0,
+     "right": 200,
+     "gap": 0.0
+    }
+   ],
+   "expected": [
+    "신청은 온라인으로만 접수하며 방문 접수는 받지 않습니다.",
+    "문의는 담당 부서로 합니다"
+   ]
+  },
+  {
+   "name": "list marker keeps lines apart",
+   "lines": [
+    {
+     "text": "신청 대상은 다음 각 호에 해당하는 기업으로서 사업자등록을 마친 곳",
+     "left": 0,
+     "right": 585,
+     "gap": 0.0
+    },
+    {
+     "text": "○ 신청방법: 온라인",
+     "left": 0,
+     "right": 200,
+     "gap": 0.0
+    }
+   ],
+   "expected": [
+    "신청 대상은 다음 각 호에 해당하는 기업으로서 사업자등록을 마친 곳",
+    "○ 신청방법: 온라인"
+   ]
+  },
+  {
+   "name": "letter-spaced heading is closed and never continues",
+   "lines": [
+    {
+     "text": "사 업 명: 지원사업 안내 자료 전체를 한 줄 가득 채운 제목입니다 계속",
+     "left": 0,
+     "right": 585,
+     "gap": 0.0
+    },
+    {
+     "text": "다음 줄",
+     "left": 0,
+     "right": 100,
+     "gap": 0.0
+    }
+   ],
+   "expected": [
+    "사업명: 지원사업 안내 자료 전체를 한 줄 가득 채운 제목입니다 계속",
+    "다음 줄"
+   ]
+  },
+  {
+   "name": "contents lines with page numbers stay apart",
+   "lines": [
+    {
+     "text": "교육 지원 안내 3",
+     "left": 0,
+     "right": 585,
+     "gap": 50
+    },
+    {
+     "text": "신청 서류 목록 7",
+     "left": 0,
+     "right": 585,
+     "gap": 50
+    },
+    {
+     "text": "본문 시작",
+     "left": 0,
+     "right": 100,
+     "gap": 0.0
+    }
+   ],
+   "expected": [
+    "교육 지원 안내 3",
+    "신청 서류 목록 7",
+    "본문 시작"
+   ]
+  },
+  {
+   "name": "table row stays apart",
+   "lines": [
+    {
+     "text": "구분 금액 비고",
+     "left": 0,
+     "right": 585,
+     "gap": 25
+    },
+    {
+     "text": "일반",
+     "left": 0,
+     "right": 40,
+     "gap": 0.0
+    }
+   ],
+   "expected": [
+    "구분 금액 비고",
+    "일반"
+   ]
+  }
+ ]
+}

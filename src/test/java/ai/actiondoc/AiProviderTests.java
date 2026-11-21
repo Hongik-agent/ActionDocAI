@@ -14,26 +14,26 @@ import static org.mockito.Mockito.*;
 
 class AiProviderTests {
     final ObjectMapper json=new ObjectMapper();
-    static final String PROFILE="서울 거주하는 20대 여자이고 직장인이야. 연봉 5000만원이야.";
-    static final String AGE="19세 ~ 39세 무주택 청년세대주가 대상입니다.";
-    static final String REGION="인천 거주 또는 전입예정자가 대상입니다.";
-    static final String INCOME="본인 연소득 6천만원 이하, 기혼은 부부합산 8천만원 이하이며 세전 기준입니다.";
-    static final String PERIOD="신청기간: 2099. 5. 11.(월) 10:00 ~ 29.(금) 18:00";
+    static final String PROFILE="다나시에 사는 30대 남자이고 자영업자야. 연소득 3500만원이야.";
+    static final String AGE="만 25세 ~ 44세 무주택 가구주가 대상입니다.";
+    static final String REGION="가나시 거주 또는 전입예정자가 대상입니다.";
+    static final String INCOME="본인 연소득 4천만원 이하, 맞벌이는 가구합산 7천만원 이하이며 세전 기준입니다.";
+    static final String PERIOD="신청기간: 2099. 6. 2. 09:00 ~ 26. 17:00";
     Document document()throws Exception{return new DocumentService().normalize(null,String.join("\n",AGE,REGION,INCOME,PERIOD));}
     ObjectNode extraction(){
         var out=json.createObjectNode();var facts=out.putArray("facts");
         for(var pair:List.of(new String[]{"eligibility","나이·주택",AGE,"b1"},new String[]{"eligibility","거주",REGION,"b2"},new String[]{"eligibility","소득",INCOME,"b3"},new String[]{"period","신청기간",PERIOD,"b4"})){
-            var fact=facts.addObject();fact.put("category",pair[0]);fact.put("topic",pair[1]);fact.put("statement",pair[2]);fact.putArray("evidence").addObject().put("blockId",pair[3]).put("quote",pair[2]);
+            var fact=facts.addObject();fact.put("category",pair[0]);fact.put("topic",pair[1]);fact.put("statement",pair[2]);fact.putArray("blockIds").add(pair[3]);
         }return out;
     }
     ObjectNode report(){
-        var r=json.createObjectNode().put("title","청년 지원 모집").put("documentType","PUBLIC_NOTICE").put("overview","무주택 청년의 소득·거주 조건을 확인하는 모집 공고입니다.");r.putArray("overviewFactIds").add("f1").add("f2").add("f3");
-        var section=r.putArray("sections").addObject().put("id","s1").put("title","핵심 대상").put("body","19세 ~ 39세 무주택 청년세대주가 대상이며 인천 거주 또는 전입예정 조건을 확인해야 합니다.");section.putArray("factIds").add("f1").add("f2");
-        var checks=r.putArray("personalChecks");check(checks,"region","거주·전입","UNKNOWN","서울에 거주한다고 입력했습니다. 인천 전입예정자 예외가 있어 전입 계획을 확인해야 합니다.","서울","f2");
-        check(checks,"age","나이","MATCH","입력한 20대는 19세 ~ 39세 범위에 해당하지만 나이 조건에 대한 비교일 뿐입니다.","20대","f1");
-        check(checks,"income","소득","UNKNOWN","연봉 5000만원이라고 입력했으나 세전 기준과 기혼·부부합산 소득 여부를 확인해야 합니다.","연봉 5000만원","f3");
-        check(checks,"house","주택","UNKNOWN","무주택 및 청년세대주 여부를 입력하지 않아 확인이 필요합니다.","","f1");
-        var actions=r.putArray("actions");action(actions,"check","전입 계획과 주택 조건 확인","전입예정 여부와 무주택·세대주 조건을 확인하세요.","CHECK",null,"f1","f2");
+        var r=json.createObjectNode().put("title","주거 지원 모집").put("documentType","PUBLIC_NOTICE").put("overview","무주택 가구주의 소득·거주 조건을 확인하는 모집 공고입니다.");r.putArray("overviewFactIds").add("f1").add("f2").add("f3");
+        var section=r.putArray("sections").addObject().put("id","s1").put("title","핵심 대상").put("body","만 25세 ~ 44세 무주택 가구주가 대상이며 가나시 거주 또는 전입예정 조건을 확인해야 합니다.");section.putArray("factIds").add("f1").add("f2");
+        var checks=r.putArray("personalChecks");check(checks,"region","거주·전입","UNKNOWN","다나시에 거주한다고 입력했습니다. 가나시 전입예정자 예외가 있어 전입 계획을 확인해야 합니다.","다나시","f2");
+        check(checks,"age","나이","MATCH","입력한 30대는 만 25세 ~ 44세 범위에 해당하지만 나이 조건에 대한 비교일 뿐입니다.","30대","f1");
+        check(checks,"income","소득","UNKNOWN","연소득 3500만원이라고 입력했으나 세전 기준과 맞벌이·가구합산 소득 여부를 확인해야 합니다.","연소득 3500만원","f3");
+        check(checks,"house","주택","UNKNOWN","무주택 및 가구주 여부를 입력하지 않아 확인이 필요합니다.","","f1");
+        var actions=r.putArray("actions");action(actions,"check","전입 계획과 주택 조건 확인","전입예정 여부와 무주택·가구주 조건을 확인하세요.","CHECK",null,"f1","f2");
         return r;
     }
     void check(ArrayNode arr,String id,String criterion,String status,String reason,String quote,String...refs){var n=arr.addObject().put("id",id).put("criterion",criterion).put("status",status).put("reason",reason).put("profileQuote",quote);var a=n.putArray("factIds");for(var ref:refs)a.add(ref);}
@@ -54,13 +54,13 @@ class AiProviderTests {
         for(var request:h.requests){var payload=json.readTree(requestBody(request));assertFalse(payload.path("store").asBoolean(true));assertTrue(payload.at("/text/format/strict").asBoolean());}
         String output=System.getProperty("actiondoc.personalFixture");if(output!=null)java.nio.file.Files.writeString(java.nio.file.Path.of(output),json.writerWithDefaultPrettyPrinter().writeValueAsString(result));
     }
-    @Test void fabricatedSourceQuoteNeverBecomesFact()throws Exception{var e=extraction();for(var f:e.path("facts"))((ObjectNode)f.path("evidence").get(0)).put("quote","원문에 없는 지원 조건");assertThrows(IllegalArgumentException.class,()->provider(e).service.analyze(document(),PROFILE,"ai",true));}
-    @Test void fabricatedProfileQuoteIsExcluded()throws Exception{var r=report();((ObjectNode)r.path("personalChecks").get(0)).put("profileQuote","인천 거주");var a=provider(extraction(),r,audit()).service.analyze(document(),PROFILE,"ai",true);assertTrue(a.personalChecks().stream().noneMatch(c->c.id().equals("region")));assertTrue(a.warnings().stream().anyMatch(w->w.contains("사용자 입력")));}
-    @Test void independentAuditRejectsUnsupportedCertainty()throws Exception{var r=report();((ObjectNode)r.path("personalChecks").get(0)).put("status","MISMATCH").put("reason","서울 거주자는 무조건 신청 불가합니다.");var a=provider(extraction(),r,audit("region")).service.analyze(document(),PROFILE,"ai",true);assertTrue(a.personalChecks().stream().noneMatch(c->c.id().equals("region")));}
+    @Test void fabricatedSourceQuoteNeverBecomesFact()throws Exception{var e=extraction();for(var f:e.path("facts"))((ArrayNode)f.path("blockIds")).removeAll().add("invented");assertThrows(IllegalArgumentException.class,()->provider(e).service.analyze(document(),PROFILE,"ai",true));}
+    @Test void fabricatedProfileQuoteIsExcluded()throws Exception{var r=report();((ObjectNode)r.path("personalChecks").get(0)).put("profileQuote","가나시 거주");var a=provider(extraction(),r,audit()).service.analyze(document(),PROFILE,"ai",true);assertTrue(a.personalChecks().stream().noneMatch(c->c.id().equals("region")));assertTrue(a.warnings().stream().anyMatch(w->w.contains("사용자 입력")));}
+    @Test void independentAuditRejectsUnsupportedCertainty()throws Exception{var r=report();((ObjectNode)r.path("personalChecks").get(0)).put("status","MISMATCH").put("reason","다나시 거주자는 무조건 신청 불가합니다.");var a=provider(extraction(),r,audit("region")).service.analyze(document(),PROFILE,"ai",true);assertTrue(a.personalChecks().stream().noneMatch(c->c.id().equals("region")));}
     @Test void missingAuditVerdictFailsClosed()throws Exception{var a=audit();((ArrayNode)a.path("verdicts")).remove(1);assertThrows(IllegalArgumentException.class,()->provider(extraction(),report(),a).service.analyze(document(),PROFILE,"ai",true));}
-    @Test void unknownEligibilityBlocksApplyButAllowsChecking()throws Exception{var r=report();action((ArrayNode)r.path("actions"),"apply","신청서 제출","신청서를 제출하세요.","APPLY","2099-05-29","f4");var a=provider(extraction(),r,audit()).service.analyze(document(),PROFILE,"ai",true);assertEquals(List.of("check"),a.findings().stream().map(Finding::id).toList());}
+    @Test void unknownEligibilityBlocksApplyButAllowsChecking()throws Exception{var r=report();action((ArrayNode)r.path("actions"),"apply","신청서 제출","신청서를 제출하세요.","APPLY","2099-06-26","f4");var a=provider(extraction(),r,audit()).service.analyze(document(),PROFILE,"ai",true);assertEquals(List.of("check"),a.findings().stream().map(Finding::id).toList());}
     @Test void expiredNoticeBlocksPreparationAndApplication()throws Exception{
-        String closed=PERIOD.replace("2099","2020");var doc=new DocumentService().normalize(null,String.join("\n",AGE,REGION,INCOME,closed));var e=extraction();((ObjectNode)e.path("facts").get(3)).put("statement",closed);((ObjectNode)e.path("facts").get(3).path("evidence").get(0)).put("quote",closed);
+        String closed=PERIOD.replace("2099","2020");var doc=new DocumentService().normalize(null,String.join("\n",AGE,REGION,INCOME,closed));var e=extraction();((ObjectNode)e.path("facts").get(3)).put("statement",closed);
         var r=report();action((ArrayNode)r.path("actions"),"apply","서류 준비","서류를 준비하세요.","PREPARE",null,"f4");var a=provider(e,r,audit()).service.analyze(doc,PROFILE,"ai",true);assertEquals("CLOSED",a.periodStatus());assertEquals(1,a.findings().size());
     }
     @Test void nonexistentFactReferenceIsNotDisplayed()throws Exception{var r=report();((ArrayNode)r.path("sections").get(0).path("factIds")).removeAll().add("invented");assertThrows(IllegalArgumentException.class,()->provider(extraction(),r,audit()).service.analyze(document(),PROFILE,"ai",true));}
@@ -68,11 +68,35 @@ class AiProviderTests {
     @Test void fabricatedAmountIsRejectedBeforeAudit()throws Exception{var r=report();((ObjectNode)r.path("sections").get(0)).put("body","지원금 999999원을 지급합니다.");assertThrows(IllegalArgumentException.class,()->provider(extraction(),r,audit()).service.analyze(document(),PROFILE,"ai",true));}
     @Test void missingConsentAndKeyDoNotCallProvider()throws Exception{var h=provider();assertThrows(IllegalArgumentException.class,()->h.service.analyze(document(),PROFILE,"ai",false));assertTrue(h.requests.isEmpty());assertThrows(IllegalArgumentException.class,()->new AnalysisService(json,mock(HttpClient.class),"","test-model").analyze(document(),PROFILE,"ai",true));}
     @Test void rejectedExtractedFactAlsoRemovesDependentSummariesAndChecks()throws Exception{var a=provider(extraction(),report(),audit("fact-f3")).service.analyze(document(),PROFILE,"ai",true);assertEquals(3,a.facts().size());assertTrue(a.personalChecks().stream().noneMatch(c->c.id().equals("income")));}
-    @Test void oneFactCanKeepConditionsAcrossMultiplePages()throws Exception{var source=document();var blocks=source.blocks().stream().map(b->new Block(b.id(),b.id().equals("b2")?6:1,b.text())).toList();var doc=new Document(source.id(),source.name(),source.type(),6,source.characters(),source.markdown(),blocks,source.warnings(),List.of());var e=extraction();((ArrayNode)e.path("facts").get(0).path("evidence")).addObject().put("blockId","b2").put("quote",REGION);var a=provider(e,report(),audit()).service.analyze(doc,PROFILE,"ai",true);assertEquals(List.of(1,6),a.facts().get(0).evidence().stream().map(Evidence::page).toList());}
-    @Test void changingCurrencyUnitWithSameNumberIsRejected(){assertFalse(LlmDocumentAnalyzer.numbersSupported("1억원 지원",List.of(new Evidence("b1",1,"1만원 지원"))));assertTrue(LlmDocumentAnalyzer.numbersSupported("최대 1억원",List.of(new Evidence("b1",1,"최대 1억원까지 대출 가능"))));}
+    @Test void oneFactCanKeepConditionsAcrossMultiplePages()throws Exception{var source=document();var blocks=source.blocks().stream().map(b->new Block(b.id(),b.id().equals("b2")?6:1,b.text())).toList();var doc=new Document(source.id(),source.name(),source.type(),6,source.characters(),source.markdown(),blocks,source.warnings(),List.of());var e=extraction();((ArrayNode)e.path("facts").get(0).path("blockIds")).add("b2");var a=provider(e,report(),audit()).service.analyze(doc,PROFILE,"ai",true);assertEquals(List.of(1,6),a.facts().get(0).evidence().stream().map(Evidence::page).toList());}
+    @Test void factEvidenceIsTheCitedBlockText()throws Exception{var doc=document();var a=provider(extraction(),report(),audit()).service.analyze(doc,PROFILE,"ai",true);assertEquals(doc.blocks().get(1).text(),a.facts().get(1).evidence().get(0).quote());}
+    @Test void factCitingBlockOutsideItsPartIsDropped()throws Exception{
+        var blocks=List.of(new Block("b1",1,AGE),new Block("padding",2,"가".repeat(32000-AGE.length())),new Block("b2",6,REGION),new Block("b3",6,INCOME),new Block("b4",7,PERIOD));
+        var doc=new Document("long","긴 문서","PDF",7,33000,"",blocks,List.of(),List.of());var all=extraction();var first=json.createObjectNode();var f=all.path("facts").get(0).deepCopy();((ArrayNode)f.path("blockIds")).removeAll().add("b2");first.putArray("facts").add(all.path("facts").get(0)).add(f);var second=json.createObjectNode();var rest=second.putArray("facts");for(int i=1;i<4;i++)rest.add(all.path("facts").get(i));
+        var a=provider(first,second,report(),audit()).service.analyze(doc,PROFILE,"ai",true);assertEquals(4,a.facts().size());assertTrue(a.warnings().stream().anyMatch(w->w.contains("원문 근거를 검증하지 못한")));
+    }
+    @Test void reportShapeIsLeftToTheModel()throws Exception{
+        var source=document();var blocks=new ArrayList<>(source.blocks());for(int i=5;i<=13;i++)blocks.add(new Block("b"+i,1,"항목 "+i+"에 대한 안내입니다."));var doc=new Document(source.id(),source.name(),source.type(),1,source.characters(),source.markdown(),blocks,source.warnings(),List.of());
+        var e=extraction();var facts=(ArrayNode)e.path("facts");for(int i=4;i<101;i++){var f=facts.addObject().put("category","other").put("topic","항목").put("statement",AGE);f.putArray("blockIds").add("b1");}
+        var wide=((ObjectNode)facts.get(100));var ids=(ArrayNode)wide.putArray("blockIds");for(int i=1;i<=13;i++)ids.add("b"+i);
+        var r=report();var sections=(ArrayNode)r.path("sections");for(int i=2;i<=9;i++){var s=sections.addObject().put("id","s"+i).put("title","추가 구간").put("body",AGE);s.putArray("factIds").add("f1");}
+        var actions=(ArrayNode)r.path("actions");for(int i=2;i<=6;i++)action(actions,"check"+i,"추가 확인","대상 조건을 확인하세요.","CHECK",null,"f1");
+        var a=json.createObjectNode();var verdicts=a.putArray("verdicts");for(var id:List.of("overview","region","age","income","house"))verdicts.addObject().put("id",id).put("supported",true);for(int i=1;i<=9;i++)verdicts.addObject().put("id","s"+i).put("supported",true);for(int i=1;i<=6;i++)verdicts.addObject().put("id",i==1?"check":"check"+i).put("supported",true);for(int i=1;i<=101;i++)verdicts.addObject().put("id","fact-f"+i).put("supported",true);
+        var result=provider(e,r,a).service.analyze(doc,PROFILE,"ai",true);assertEquals(9,result.sections().size());assertEquals(101,result.facts().size());assertEquals(13,result.facts().get(100).evidence().size());
+    }
+    @Test void changingCurrencyUnitWithSameNumberIsRejected(){assertFalse(NumberCheck.supported("1억원 지원",List.of(new Evidence("b1",1,"1만원 지원"))));assertTrue(NumberCheck.supported("최대 1억원",List.of(new Evidence("b1",1,"최대 1억원까지 대출 가능"))));}
+    @Test void callsShareOneDeadline()throws Exception{var h=provider(extraction(),report(),audit());h.service.analyze(document(),PROFILE,"ai",true);var t=h.requests.stream().map(r->r.timeout().orElseThrow()).toList();assertEquals(3,t.size());assertTrue(t.get(0).compareTo(LlmDocumentAnalyzer.ANALYSIS_BUDGET)<=0&&t.get(0).toSeconds()>150);for(int i=1;i<t.size();i++)assertTrue(t.get(i).compareTo(t.get(i-1))<=0);}
     @Test void longDocumentIsFullyExtractedBeforeOneCrossPartSynthesis()throws Exception{
         var blocks=new ArrayList<Block>();blocks.add(new Block("b1",1,AGE));blocks.add(new Block("padding",2,"가".repeat(32000-AGE.length())));blocks.add(new Block("b2",6,REGION));blocks.add(new Block("b3",6,INCOME));blocks.add(new Block("b4",7,PERIOD));
         var doc=new Document("long","긴 문서","PDF",7,33000,"",blocks,List.of(),List.of());var all=extraction();var first=json.createObjectNode();first.putArray("facts").add(all.path("facts").get(0));var second=json.createObjectNode();var remainder=second.putArray("facts");for(int i=1;i<4;i++)remainder.add(all.path("facts").get(i));var h=provider(first,second,report(),audit());var result=h.service.analyze(doc,PROFILE,"ai",true);assertEquals(2,result.chunks());assertEquals(4,result.facts().size());assertEquals(4,h.requests.size());var synthesis=json.readTree(requestBody(h.requests.get(2))).path("input").asText();assertTrue(synthesis.contains(AGE));assertTrue(synthesis.contains(REGION));
     }
-    @Test void effectiveDateCannotBecomeActionDeadline(){assertFalse(LlmDocumentAnalyzer.supportedDeadline("2026-12-01",List.of(new Evidence("b1",1,"2026년 12월 1일부터 적용됩니다."))));assertTrue(LlmDocumentAnalyzer.supportedDeadline("2099-05-29",List.of(new Evidence("b1",1,PERIOD))));}
+    @Test void effectiveDateCannotBecomeActionDeadline(){assertFalse(LlmDocumentAnalyzer.supportedDeadline("2026-12-01",List.of(new Evidence("b1",1,"2026년 12월 1일부터 적용됩니다."))));assertTrue(LlmDocumentAnalyzer.supportedDeadline("2099-06-26",List.of(new Evidence("b1",1,PERIOD))));}
+    List<Block> shortBlocks(int count){var blocks=new ArrayList<Block>();for(int i=1;i<=count;i++)blocks.add(new Block("b"+i,1+i/40,"칸 "+i));return blocks;}
+    @Test void manyShortBlocksArePartitionedAtMost250PerPartInOrder(){var blocks=shortBlocks(1200);var parts=LlmDocumentAnalyzer.partition(blocks);assertTrue(parts.stream().allMatch(p->!p.isEmpty()&&p.size()<=250));assertEquals(blocks,parts.stream().flatMap(List::stream).toList());}
+    @Test void everyExtractionSchemaKeepsBlockIdEnumWithin250Values()throws Exception{
+        var blocks=shortBlocks(1200);var doc=new Document("scan","표 많은 문서","PDF",31,9000,"",blocks,List.of(),List.of());var empty=json.createObjectNode();empty.putArray("facts");
+        var h=provider(empty,empty,empty,empty,empty);assertThrows(IllegalArgumentException.class,()->h.service.analyze(doc,"","ai",true));assertEquals(5,h.requests.size());int total=0;
+        for(var r:h.requests){var e=json.readTree(requestBody(r)).path("text").path("format").path("schema").path("properties").path("facts").path("items").path("properties").path("blockIds").path("items").path("enum");assertTrue(e.size()>0&&e.size()<=250,"enum size "+e.size());total+=e.size();}
+        assertEquals(1200,total);
+    }
 }
