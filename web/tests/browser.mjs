@@ -121,19 +121,13 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: '/private/tmp/actiondoc-web-mobile.png', fullPage: true });
-  // With AI configured but no sign-in, the one-click button asks for sign-in before reading anything.
+  // With AI configured but no sign-in, the panel offers sign-in instead of the AI button (which sits with the consent).
   const visitor = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await visitor.route('**/api/config', route => route.fulfill({ json: { enabled: true, provider: 'Google Gemini', url: 'https://example.supabase.co', publicKey: 'public-anon-key' } }));
   await visitor.goto('http://127.0.0.1:4184/');
-  await visitor.waitForSelector('#ai-direct:not([hidden])');
-  // The top button is the only way to start an AI summary; the panel below only signs in, asks consent and shows results.
-  assert.equal(await visitor.locator('#ai-panel button.primary').count(), 0);
-  await visitor.getByRole('tab', { name: '텍스트 붙여넣기' }).click();
-  await visitor.fill('#document-text', '지원 대상: 지역 중소기업\n신청 기한: 2027년 3월 20일까지');
-  await visitor.click('#ai-direct');
-  await visitor.waitForFunction(() => document.getElementById('ai-status').textContent.includes('로그인'));
-  assert.equal(await visitor.locator('#results').isVisible(), false);
+  await visitor.waitForSelector('#ai-login:not([hidden])');
+  assert.equal(await visitor.locator('#ai-direct').isVisible(), false);
   await visitor.close();
   assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(postRequests, []);
-  console.log('PASS: text/HTML/HWP/PDF, 50 pages and selected pages of a 484-page PDF, mixed PDF warning, image-region OCR, parallel OCR page order, OCR cancel, one-click AI asks for sign-in first, AI glance/to-do layout, evidence export, no script execution or external requests, mobile layout');
+  console.log('PASS: text/HTML/HWP/PDF, 50 pages and selected pages of a 484-page PDF, mixed PDF warning, image-region OCR, parallel OCR page order, OCR cancel, signed-out AI panel offers sign-in, AI glance/to-do layout, evidence export, no script execution or external requests, mobile layout');
 } finally { if (browser) await browser.close(); server.kill(); }

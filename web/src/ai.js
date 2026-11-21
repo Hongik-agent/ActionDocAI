@@ -49,7 +49,7 @@ export function aiNodes(items) {
   }
   return [...groups.values()];
 }
-// The glance and the to-dos stay open; the per-section details are folded unless they are all there is.
+// The glance first, then the to-dos, then the per-section details (open, foldable by the reader).
 export function aiView(items) {
   const of=kind=>items.filter(i=>(i.kind??'detail')===kind), make=(tag,props={})=>Object.assign(document.createElement(tag),props), nodes=[];
   const evidence=list=>{
@@ -63,7 +63,8 @@ export function aiView(items) {
     list.append(...actions.map(i=>{const li=make('li');li.append(make('span',{textContent:i.statement}),evidence([i]));return li;}));
     s.append(make('h3',{textContent:KIND_TITLES.action}),list);nodes.push(s);
   }
-  if(details.length){const d=make('details',{className:'ai-details',open:!nodes.length});d.append(make('summary',{textContent:`자세히 보기 · ${details.length}개 항목`}),...aiNodes(details));nodes.push(d);}
+  // Details start open: folding them hid the substance of short documents.
+  if(details.length){const d=make('details',{className:'ai-details',open:true});d.append(make('summary',{textContent:`자세히 보기 · ${details.length}개 항목`}),...aiNodes(details));nodes.push(d);}
   return nodes;
 }
 export async function aiSignedIn() { return Boolean(client && (await client.auth.getSession()).data.session); }
