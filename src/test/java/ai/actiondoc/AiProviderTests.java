@@ -91,4 +91,12 @@ class AiProviderTests {
         var doc=new Document("long","긴 문서","PDF",7,33000,"",blocks,List.of(),List.of());var all=extraction();var first=json.createObjectNode();first.putArray("facts").add(all.path("facts").get(0));var second=json.createObjectNode();var remainder=second.putArray("facts");for(int i=1;i<4;i++)remainder.add(all.path("facts").get(i));var h=provider(first,second,report(),audit());var result=h.service.analyze(doc,PROFILE,"ai",true);assertEquals(2,result.chunks());assertEquals(4,result.facts().size());assertEquals(4,h.requests.size());var synthesis=json.readTree(requestBody(h.requests.get(2))).path("input").asText();assertTrue(synthesis.contains(AGE));assertTrue(synthesis.contains(REGION));
     }
     @Test void effectiveDateCannotBecomeActionDeadline(){assertFalse(LlmDocumentAnalyzer.supportedDeadline("2026-12-01",List.of(new Evidence("b1",1,"2026년 12월 1일부터 적용됩니다."))));assertTrue(LlmDocumentAnalyzer.supportedDeadline("2099-06-26",List.of(new Evidence("b1",1,PERIOD))));}
+    List<Block> shortBlocks(int count){var blocks=new ArrayList<Block>();for(int i=1;i<=count;i++)blocks.add(new Block("b"+i,1+i/40,"칸 "+i));return blocks;}
+    @Test void manyShortBlocksArePartitionedAtMost250PerPartInOrder(){var blocks=shortBlocks(1200);var parts=LlmDocumentAnalyzer.partition(blocks);assertTrue(parts.stream().allMatch(p->!p.isEmpty()&&p.size()<=250));assertEquals(blocks,parts.stream().flatMap(List::stream).toList());}
+    @Test void everyExtractionSchemaKeepsBlockIdEnumWithin250Values()throws Exception{
+        var blocks=shortBlocks(1200);var doc=new Document("scan","표 많은 문서","PDF",31,9000,"",blocks,List.of(),List.of());var empty=json.createObjectNode();empty.putArray("facts");
+        var h=provider(empty,empty,empty,empty,empty);assertThrows(IllegalArgumentException.class,()->h.service.analyze(doc,"","ai",true));assertEquals(5,h.requests.size());int total=0;
+        for(var r:h.requests){var e=json.readTree(requestBody(r)).path("text").path("format").path("schema").path("properties").path("facts").path("items").path("properties").path("blockIds").path("items").path("enum");assertTrue(e.size()>0&&e.size()<=250,"enum size "+e.size());total+=e.size();}
+        assertEquals(1200,total);
+    }
 }

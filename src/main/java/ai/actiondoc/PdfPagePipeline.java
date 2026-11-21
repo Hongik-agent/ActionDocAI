@@ -38,8 +38,7 @@ final class PdfPagePipeline {
                 float scale=(float)Math.min(200.0/72.0,Math.min(4096.0/Math.max(width,height),Math.sqrt(10_000_000.0/(width*height))));
                 // Under 16 rendered pixels is a spacer, bullet or rule, too small to hold readable text.
                 var images=ImageRegions.find(page).stream().filter(region->region.width()*scale>=16 && region.height()*scale>=16).toList();
-                // Under 40 characters is less than a sentence, so the page's content must be in its image layer.
-                boolean scanned=text.isBlank() || text.replaceAll("\\s","").length()<40 && !images.isEmpty();
+                boolean scanned=scanned(text,!images.isEmpty());
                 // Images under 250,000 pixels (about 500×500) are logos and icons rather than text-bearing figures.
                 var figures=scanned ? List.<ImageRegions.Region>of() : images.stream().filter(region->region.pixels()>=250_000).toList();
                 if(!scanned && figures.isEmpty()) {
@@ -111,6 +110,8 @@ final class PdfPagePipeline {
         }
         return List.copyOf(result);
     }
+    // Under 40 characters is less than a sentence, so the page's content must be in its image layer.
+    static boolean scanned(String text,boolean hasImages){return text.isBlank() || BasicSummary.squeeze(text).length()<40 && hasImages;}
     // Pixels at 245+ are paper white; about one dark pixel per 100,000 (at least 10) is scanner noise, not content.
     private static boolean isBlank(BufferedImage image) {
         long dark=0,limit=Math.max(10,(long)image.getWidth()*image.getHeight()/100000);

@@ -75,7 +75,7 @@ final class BasicSummary {
     private static boolean find(Pattern p,String s){return p.matcher(s).find();}
     /** JS s.replace(re,'') without the g flag: only the first match goes. */
     private static String cut(Pattern p,String s){return p.matcher(s).replaceFirst("");}
-    private static String squeeze(String s){return SPACE.matcher(s).replaceAll("");}
+    static String squeeze(String s){return SPACE.matcher(s).replaceAll("");}
     /** JS String.trim. An index scan: a regex for trailing space restarts inside every whitespace run, which is quadratic on long lines. */
     static String trim(String s){int a=0,b=s.length();while(a<b&&space(s.charAt(a)))a++;while(b>a&&space(s.charAt(b-1)))b--;return s.substring(a,b);}
     /** The same characters as WS. */

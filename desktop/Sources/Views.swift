@@ -128,7 +128,7 @@ struct DesktopView: View {
                 HStack(spacing:8){if model.busy{ProgressView().controlSize(.small)}else{Image(systemName:"sparkles")};Text(model.busy ? "분석하고 있어요…":"문서 요약하기").fontWeight(.semibold);Spacer();Image(systemName:"arrow.right")}.padding(.vertical,7).frame(maxWidth:.infinity)
             }.buttonStyle(.borderedProminent).controlSize(.large).disabled(!model.canAnalyze || (model.useAI && (!model.aiConfigured || !model.consent))).keyboardShortcut(.return,modifiers:.command)
             if model.busy { Text(model.status).font(.caption).foregroundStyle(.secondary) }
-            if model.busy && model.document==nil { Button("읽기 취소"){Task{await model.cancelReading()}}.font(.caption) }
+            if model.readingDocument { Button("읽기 취소"){Task{await model.cancelReading()}}.font(.caption).disabled(model.cancelRequested) }
             Text("스캔 PDF도 자동으로 OCR 처리해요. 작업은 확인한 뒤 등록합니다.").font(.system(size:10)).foregroundStyle(.tertiary)
         }
     }

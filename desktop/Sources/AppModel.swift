@@ -18,6 +18,8 @@ import UniformTypeIdentifiers
     @Published var ready=false
     @Published var serviceReady=false
     @Published var busy=false
+    @Published var readingDocument=false
+    @Published var cancelRequested=false
     @Published var status="Mac의 기록을 준비하고 있어요…"
     @Published var serviceMessage:String?
     @Published var error:String?
@@ -78,13 +80,14 @@ import UniformTypeIdentifiers
     func sample(){guard !busy else{return};file=nil;text=sampleNotice;resetReport();tab="analyze"}
     func analyze() async {
         guard canAnalyze,let api else{return};if useAI && !aiConfigured{error="AI 설정에서 본인의 OpenAI API 키를 연결해 주세요.";return};if useAI && !consent{error="문서 전송과 본인 API 사용 비용에 동의해 주세요.";return};guard context.count<=4000 else{error="추가 정보는 4,000자 이하여야 합니다.";return}
-        busy=true;error=nil;notice=nil;report=nil;document=nil;defer{busy=false}
-        do{status="문서와 스캔 페이지를 읽고 있어요…";let reader=Task{try await api.document(file:file,text:text,onProgress:{[weak self] progress in self?.status=progress.message})};reading=reader;let doc=try await reader.value;reading=nil;document=doc;status=useAI ? "AI가 문서 전체를 요약하고 원문 근거를 검증하고 있어요…":"문서의 주요 내용과 원문 근거를 정리하고 있어요…";let result=try await api.analyze(doc:doc,context:context,ai:useAI,consent:useAI && consent,engine:useAI ? "ai":"local",purpose:summaryPurpose.rawValue);report=result
+        busy=true;error=nil;notice=nil;report=nil;document=nil;defer{busy=false;readingDocument=false;cancelRequested=false}
+        do{status="문서와 스캔 페이지를 읽고 있어요…";readingDocument=true;cancelRequested=false;let reader=Task{try await api.document(file:file,text:text,onProgress:{[weak self] progress in self?.status=progress.message})};reading=reader;let doc=try await reader.value;reading=nil;readingDocument=false;cancelRequested=false;document=doc;status=useAI ? "AI가 문서 전체를 요약하고 원문 근거를 검증하고 있어요…":"문서의 주요 내용과 원문 근거를 정리하고 있어요…";let result=try await api.analyze(doc:doc,context:context,ai:useAI,consent:useAI && consent,engine:useAI ? "ai":"local",purpose:summaryPurpose.rawValue);report=result
             do{try archive?.remember(document:doc,report:result,context:context);refreshLocal();if archiveNearlyFull{notice="Mac 기록 용량이 50MB에 가까워졌습니다. 기록 화면에서 필요한 기록을 내보낸 뒤 오래된 기록을 삭제해 주세요."}}catch{self.error="분석은 완료했지만 Mac 기록 저장에 실패했습니다: \(error.localizedDescription)"}
             try? await api.bootstrap();analysesRemaining=api.analysesRemaining;status="분석 완료 · 이 Mac에 기록 저장"
-        }catch{let cancelled=reading?.isCancelled==true;reading=nil;if cancelled{status="문서 읽기를 취소했습니다";notice="문서 읽기를 취소했습니다."}else{self.error=error.localizedDescription;status="분석을 완료하지 못했어요"};try? await api.bootstrap();analysesRemaining=api.analysesRemaining}
+        }catch{let cancelled=cancelRequested||reading?.isCancelled==true;reading=nil;if cancelled{status="문서 읽기를 취소했습니다";notice="문서 읽기를 취소했습니다."}else{self.error=error.localizedDescription;status="분석을 완료하지 못했어요"};try? await api.bootstrap();analysesRemaining=api.analysesRemaining}
     }
-    func cancelReading() async {guard let reading,!reading.isCancelled else{return};await api?.cancelDocument();reading.cancel()}
+    // Set before the DELETE: the read can fail with the server's cancel reply before reading.cancel() runs.
+    func cancelReading() async {guard let reading,!reading.isCancelled,!cancelRequested else{return};cancelRequested=true;await api?.cancelDocument();reading.cancel()}
     func saveTask(_ finding:Finding,title:String,description:String,due:String,approved:Bool) async->Bool{
         guard let archive,let report,let document,!busy else{return false};busy=true;defer{busy=false}
         do{_ = try archive.save(report:report,document:document,finding:finding,title:title,description:description,due:due,approved:approved);refreshLocal();notice="이 Mac의 내 작업에 등록했습니다.";error=nil;return true}catch{self.error=error.localizedDescription;return false}

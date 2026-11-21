@@ -115,7 +115,8 @@ extension AnalysisReport {
         for s in sections ?? []{out.append("## \(one(s.title))");out.append(body(s.body));out+=s.evidence.map(quote)}
         let actions=findings.filter{$0.category=="action"}
         if !actions.isEmpty{out.append("## 할 일");out+=actions.map{"- \(one($0.title))"+($0.date.map{" (\($0))"} ?? "")+": \(one($0.detail))"}}
-        out.append("## 원문\n\n"+document.markdown)
+        // source page headings (## 본문, ## N페이지) go one level under 원문
+        out.append("## 원문\n\n"+lf(document.markdown).split(separator:"\n",omittingEmptySubsequences:false).map{$0.hasPrefix("## ") ? "#"+String($0):String($0)}.joined(separator:"\n"))
         return out.joined(separator:"\n\n")+"\n"
     }
 }

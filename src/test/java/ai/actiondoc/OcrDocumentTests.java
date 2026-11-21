@@ -196,4 +196,10 @@ class OcrDocumentTests {
             assertTrue(error.getMessage().contains("1페이지를 자동 OCR로 처리했지만 읽을 수 있는 텍스트를 확보하지 못했습니다"));
         }
     }
+    @Test void shortTextPaddedWithUnicodeSpacesAndAnImageIsScanned(){
+        // JS \s counts U+3000 and U+00A0 as space, so "Agenda" stays under 40 characters as in web read.js.
+        String padded="Agenda"+"\u3000\u00a0".repeat(20);
+        assertTrue(PdfPagePipeline.scanned(padded,true));assertFalse(PdfPagePipeline.scanned(padded,false));
+        assertFalse(PdfPagePipeline.scanned(SENTENCE,true));
+    }
 }
