@@ -14,6 +14,8 @@ public class AnalysisService {
     private final HttpClient http;
     private final String apiKey, model;
     private static final Pattern DATE = Pattern.compile("(20\\d{2})[.년/\\-]\\s*(\\d{1,2})[.월/\\-]\\s*(\\d{1,2})일?");
+    // A negated requirement ('…할 필요가 없습니다', '…하지 않아도 됩니다', '불필요') says no step is needed, so it is no task.
+    static final Pattern NO_ACTION=Pattern.compile("불필요|필요\\s*[가는도]?\\s*없|지\\s*않아도");
     @org.springframework.beans.factory.annotation.Autowired
     public AnalysisService(ObjectMapper json) { this(json,HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build(),System.getenv().getOrDefault("OPENAI_API_KEY", ""),System.getenv().getOrDefault("OPENAI_MODEL", "gpt-4.1-mini")); }
     AnalysisService(ObjectMapper json, HttpClient http, String apiKey, String model) { this.json=json; this.http=http; this.apiKey=apiKey; this.model=model; }
@@ -40,7 +42,7 @@ public class AnalysisService {
             String body=!s.excerpts().isEmpty()?String.join("\n",s.excerpts().stream().map(Block::text).toList())
                 :s.evidence().isEmpty()?"이 항목에 해당하는 원문을 찾지 못했습니다. 조건이 없다는 뜻은 아니므로 원문을 확인해 주세요.":"조건·예외를 중간에 자르지 않도록 긴 항목은 아래 원문 근거에서 확인합니다.";
             sections.add(new ReportSection("purpose-"+s.id(),s.title(),body,s.evidence().stream().map(b->new Evidence(b.id(),b.page(),b.text())).toList(),false));
-            if(s.id().equals("action"))for(var b:s.excerpts())findings.add(new Finding("action-"+b.id(),"action",s.title(),b.text(),b.text(),b.id(),b.page(),deadline(b.text())));
+            if(s.id().equals("action"))for(var b:s.excerpts())if(!NO_ACTION.matcher(b.text()).find())findings.add(new Finding("action-"+b.id(),"action",s.title(),b.text(),b.text(),b.id(),b.page(),deadline(b.text())));
         }
         List<String> warnings=new ArrayList<>(doc.warnings());
         if(!context.isBlank())warnings.add("추가 정보는 개인별 자격 충족 판정에 사용하지 않았습니다. 해당 조건을 원문과 대조해 주세요.");

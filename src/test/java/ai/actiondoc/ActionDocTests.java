@@ -63,7 +63,8 @@ class ActionDocTests {
     @Test void missingInformationDoesNotInventAction() throws Exception {
         Analysis a=analyzer.analyze(documents.normalize(null,"월 이용요금은 33,000원입니다."),"","local",false);
         assertTrue(a.findings().isEmpty());assertEquals("NEEDS_REVIEW",a.decision());
-        assertTrue(a.sections().stream().filter(x->x.id().equals("purpose-action")).allMatch(x->x.evidence().isEmpty()&&x.body().contains("찾지 못했습니다")));
+        var action=a.sections().stream().filter(x->x.id().equals("purpose-action")).findFirst().orElseThrow();
+        assertTrue(action.evidence().isEmpty());assertTrue(action.body().contains("찾지 못했습니다"));
     }
     @Test void automaticChangesDoNotCreateAction() throws Exception {
         Analysis a=analyzer.analyze(documents.normalize(null,"할인 신청이 필요 없습니다. 자동 적용됩니다."),"","local",false);

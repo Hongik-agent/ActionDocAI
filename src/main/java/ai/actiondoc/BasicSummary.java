@@ -46,7 +46,7 @@ final class BasicSummary {
             rule("termination","계약 기간·갱신·해지","계약.?기간|약정|갱신|해지|환불|철회")));
     private static final Rule EXCEPTIONS=rule("exceptions","제한·예외와 주의 사항","제외|예외|단서|다만|유의|주의|불가|취소|불이익|미납|미제출|하지\\s*않|아니");
     // Leading symbols that mark list items and sections in Korean notices.
-    private static final Pattern BULLETS=re("^[\\s□■○●◦▪◆◇※*☞▶►•ㅇ#]+"),SPACE=re("\\s"),SPACES=re("\\s+"),LEAD=re("^\\s+"),TRAIL=re("\\s+$");
+    private static final Pattern BULLETS=re("^[\\s□■○●◦▪◆◇※*☞▶►•ㅇ#]+"),SPACE=re("\\s"),SPACES=re("\\s+");
     // A notice often puts the label on one line and the answer on the next.
     private static final List<Map.Entry<String,Pattern>> SUPPORT_LABELS=List.of(
         Map.entry("eligibility",re("^(?:(?:지원|신청|모집|참여)\\s*(?:대상|자격|요건)|자격\\s*요건)")),
@@ -76,8 +76,10 @@ final class BasicSummary {
     /** JS s.replace(re,'') without the g flag: only the first match goes. */
     private static String cut(Pattern p,String s){return p.matcher(s).replaceFirst("");}
     private static String squeeze(String s){return SPACE.matcher(s).replaceAll("");}
-    /** JS String.trim. */
-    static String trim(String s){return cut(TRAIL,cut(LEAD,s));}
+    /** JS String.trim. An index scan: a regex for trailing space restarts inside every whitespace run, which is quadratic on long lines. */
+    static String trim(String s){int a=0,b=s.length();while(a<b&&space(s.charAt(a)))a++;while(b>a&&space(s.charAt(b-1)))b--;return s.substring(a,b);}
+    /** The same characters as WS. */
+    private static boolean space(char c){return c>='\t'&&c<='\r'||c==' '||c=='\u00a0'||c=='\u1680'||c>='\u2000'&&c<='\u200a'||c=='\u2028'||c=='\u2029'||c=='\u202f'||c=='\u205f'||c=='\u3000'||c=='\ufeff';}
 
     private static Map<String,List<Entry>> supportGroups(List<Block> blocks) {
         var groups=new HashMap<String,List<Entry>>();

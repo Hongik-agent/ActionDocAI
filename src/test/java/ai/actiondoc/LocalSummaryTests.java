@@ -41,7 +41,7 @@ class LocalSummaryTests {
         assertEquals(f.quote(),task.quote());
     }
     @Test void textInputsUsePageZeroAndJsTrim() throws Exception {
-        var pasted=documents.normalize(null," ﻿ 첫 줄입니다. \n\t둘째\f  줄﻿");
+        var pasted=documents.normalize(null,"\u00a0\ufeff 첫 줄입니다.\u00a0\n\t둘째\f  줄\ufeff");
         assertEquals(0,pasted.pages());
         assertEquals(List.of(new Block("b1",0,"첫 줄입니다."),new Block("b2",0,"둘째 줄")),pasted.blocks());
         assertTrue(pasted.markdown().startsWith("## 본문"));
@@ -49,6 +49,21 @@ class LocalSummaryTests {
             var doc=documents.normalize(new MockMultipartFile("file",name,"text/plain","<p>본문 한 줄</p>".getBytes(StandardCharsets.UTF_8)),null);
             assertEquals(0,doc.pages(),name);assertTrue(doc.blocks().stream().allMatch(b->b.page()==0),name);
         }
+    }
+    @Test void longWhitespaceRunsNormalizeInLinearTime() {
+        // A regex trim restarts at every position of a whitespace run; 100,000 of them took minutes.
+        var doc=assertTimeoutPreemptively(java.time.Duration.ofSeconds(1),()->documents.normalize(null,"\u3000a"+"\u00a0".repeat(100_000)+"x\u3000"));
+        assertTrue(doc.blocks().get(0).text().startsWith("a"));assertTrue(doc.blocks().get(doc.blocks().size()-1).text().endsWith("x"));
+    }
+    @Test void excerptsThatNeedNoActionAreNotTasks() throws Exception {
+        var none=analyzer.analyze(documents.normalize(null,"별도 서류는 제출할 필요가 없습니다."),"","local",false,"GENERAL");
+        var action=none.sections().stream().filter(s->s.id().equals("purpose-action")).findFirst().orElseThrow();
+        assertEquals("별도 서류는 제출할 필요가 없습니다.",action.body());
+        assertTrue(none.findings().isEmpty());
+        var doc=documents.normalize(null,"신청서를 3월 20일까지 제출해 주세요.\n별도 서류는 제출할 필요가 없습니다.\n추가 자료는 보내지 않아도 됩니다.");
+        var report=analyzer.analyze(doc,"","local",false,"GENERAL");
+        assertTrue(report.sections().stream().filter(s->s.id().equals("purpose-action")).findFirst().orElseThrow().evidence().stream().anyMatch(e->e.quote().equals("별도 서류는 제출할 필요가 없습니다.")));
+        assertEquals(List.of("신청서를 3월 20일까지 제출해 주세요."),report.findings().stream().map(Finding::quote).toList());
     }
     static void assertMatchesBasicSummary(Document doc,Analysis report,String purpose) {
         var expected=BasicSummary.summarize(doc.blocks(),purpose);
@@ -60,7 +75,7 @@ class LocalSummaryTests {
             assertEquals(e.evidence().stream().map(b->new Evidence(b.id(),b.page(),b.text())).toList(),s.evidence(),purpose);
             String body=e.excerpts().isEmpty()?(e.evidence().isEmpty()?MISSING:LONG):String.join("\n",e.excerpts().stream().map(Block::text).toList());
             assertEquals(body,s.body(),purpose);
-            if(e.id().equals("action"))for(var b:e.excerpts())actions.add(new Finding("action-"+b.id(),"action",e.title(),b.text(),b.text(),b.id(),b.page(),AnalysisService.deadline(b.text())));
+            if(e.id().equals("action"))for(var b:e.excerpts())if(!AnalysisService.NO_ACTION.matcher(b.text()).find())actions.add(new Finding("action-"+b.id(),"action",e.title(),b.text(),b.text(),b.id(),b.page(),AnalysisService.deadline(b.text())));
         }
         assertEquals(actions,report.findings(),purpose);
         assertEquals(doc.name(),report.title());assertEquals("local",report.mode());assertEquals("UNKNOWN",report.periodStatus());
