@@ -13,6 +13,12 @@ test('shared basic-summary fixture', () => {
   }
   assert.throws(() => summarize(source, 'WRONG'));
   assert.ok(reportMarkdown(summarize(source, 'CONTRACT')).includes('33,000원'));
+  for (const purpose of ['BUSINESS', 'SUPPORT', 'CONTRACT']) {
+    const report = summarize(source, purpose);
+    assert.ok(reportMarkdown(report).includes('원문 근거'), purpose);
+    // Excerpts are the source blocks themselves, never rewritten copies.
+    for (const section of report.sections) for (const block of section.excerpts) assert.ok(source.blocks.includes(block), purpose);
+  }
 });
 test('length and empty checks match desktop boundaries', () => {
   assert.throws(() => validateDocument({ blocks: [] }));
