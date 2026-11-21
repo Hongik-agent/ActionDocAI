@@ -62,7 +62,7 @@ function ocrPool() {
     close: () => { closed = true; return Promise.all(workers.map(w => w.terminate())); }
   };
 }
-export async function readFile(file, progress = () => {}, signal) {
+export async function readFile(file, progress = () => {}, signal, options = {}) {
   if (file.size > LIMITS.fileBytes) throw new Error('파일은 50MB까지 지원합니다.');
   const ext = file.name.toLowerCase().split('.').pop();
   if (!['pdf', 'hwp', 'html', 'htm', 'txt', 'md'].includes(ext)) throw new Error('PDF·HWP·HTML·TXT·MD 파일을 선택해 주세요. HWPX는 지원하지 않습니다.');
@@ -71,12 +71,20 @@ export async function readFile(file, progress = () => {}, signal) {
     const ocr = ocrPool();
     try {
       const pdf = await task.promise;
-      if (pdf.numPages > LIMITS.pages) throw new Error(`이 PDF는 ${pdf.numPages}쪽입니다. 최대 50쪽까지 지원하므로 필요한 부분을 별도 PDF로 저장해 주세요.`);
+      const start = options.start ?? 1;
+      const end = options.end ?? Math.min(pdf.numPages, start + LIMITS.pages - 1);
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > pdf.numPages || end - start >= LIMITS.pages) {
+        throw new Error(`전체 ${pdf.numPages}쪽 중 연속된 1~50쪽을 선택해 주세요. 시작 쪽과 끝 쪽을 확인해 주세요.`);
+      }
       const pages = [], jobs = []; let characters = 0, done = 0;
-      for (let page = 1; page <= pdf.numPages; page++) {
-        signal?.throwIfAborted(); progress(`PDF ${page} / ${pdf.numPages}쪽 읽는 중`);
+      for (let page = start; page <= end; page++) {
+        signal?.throwIfAborted(); progress(`PDF 원본 ${page}쪽 (선택 ${start}–${end}쪽) 읽는 중`);
         const source = await pdf.getPage(page); const content = await source.getTextContent();
         const text = pdfPageText(content.items);
+        characters += text.length;
+        if (characters > LIMITS.characters) throw new Error('본문은 160,000자까지 지원합니다. 선택 범위를 줄여 주세요.');
+        const entry = { page, text }; pages.push(entry);
+        if (options.fast) { source.cleanup(); continue; }
         const operations = await source.getOperatorList();
         const bounds = source.getViewport({scale:1});
         const scale = Math.min(2.5, 3600 / Math.max(bounds.width,bounds.height), Math.sqrt(8000000/(bounds.width*bounds.height)));
@@ -87,11 +95,8 @@ export async function readFile(file, progress = () => {}, signal) {
         // Images under 250,000 pixels (about 500×500) are logos and icons rather than text-bearing figures.
         const scanned = text.trim() ? text.replace(/\s/g,'').length < 40 && images.length > 0 : operations.fnArray.length > 0;
         const regions = scanned ? [{}] : images.filter(i => i.pixels >= 250000).map(({rectangle}) => ({rectangle}));
-        characters += text.length;
-        if (characters > LIMITS.characters) throw new Error('본문은 160,000자까지 지원합니다.');
-        const entry = { page, text }; pages.push(entry);
         if (regions.length) {
-          progress(`한국어·영어 OCR 준비 · ${page} / ${pdf.numPages}쪽`);
+          progress(`한국어·영어 OCR 준비 · 원본 ${page}쪽 (선택 ${start}–${end}쪽)`);
           // Render only once a worker is free, so at most one canvas per worker is held in memory.
           const worker = await limited(ocr.acquire(), signal);
           const canvas = document.createElement('canvas');
@@ -130,7 +135,13 @@ export async function readFile(file, progress = () => {}, signal) {
       if (recognized.length) warnings.push('OCR 인식 쪽: '+recognized.join(', ')+'. 인식한 금액·기한·예외는 원본 이미지와 대조해 주세요.');
       if (skipped.length) warnings.push(`OCR 시간이 초과되어 문자 인식을 건너뛴 쪽: ${skipped.join(', ')}. 이 쪽의 이미지 속 내용은 원본에서 확인해 주세요.`);
       if (empty.length) warnings.push(`텍스트를 읽지 못한 쪽: ${empty.join(', ')}. 빈 쪽 또는 이미지·스캔일 수 있으며 이 쪽의 내용은 결과에 포함되지 않았습니다.`);
-      return validateDocument({ name: file.name, pages: pdf.numPages, blocks, warnings });
+      if (start !== 1 || end !== pdf.numPages) warnings.unshift(`전체 ${pdf.numPages}쪽 중 원본 ${start}–${end}쪽만 정리했습니다.`);
+      if (options.fast) {
+        if (!blocks.length) throw new Error('선택한 범위에 추출 가능한 텍스트가 없습니다. 빠르게 읽기를 해제하고 OCR로 다시 정리해 주세요.');
+        warnings.push('빠르게 읽기로 이미지 속 글자는 제외했습니다.');
+      }
+      const doc = validateDocument({ name: file.name, pages: end - start + 1, blocks, warnings });
+      return { ...doc, startPage: start };
     } catch (error) {
       if (error.name === 'PasswordException') throw new Error('암호가 설정된 PDF는 지원하지 않습니다. 암호를 제거해 주세요.');
       throw error;

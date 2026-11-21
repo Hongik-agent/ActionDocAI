@@ -14,8 +14,7 @@ try {
   page.on('request', req => { if (!req.url().startsWith('http://127.0.0.1:4184/') && !req.url().startsWith('blob:')) external.push(req.url()); if (req.method() !== 'GET') postRequests.push(req.url()); });
   await page.goto('http://127.0.0.1:4184/');
   await page.getByRole('tab', { name: '텍스트 붙여넣기' }).click();
-  await page.getByRole('button', { name: '샘플로 체험하기' }).click();
-  await page.selectOption('#purpose', 'SUPPORT'); await page.click('#summarize');
+  await page.selectOption('#purpose', 'SUPPORT'); await page.click('#sample');
   await page.waitForSelector('#results:not([hidden])');
   assert.match(await page.locator('#sections').innerText(), /500,000원/);
   assert.match(await page.locator('#sections').innerText(), /다른 지원금을 받은 기업은 제외/);
@@ -34,8 +33,17 @@ try {
   await page.waitForSelector('#results:not([hidden])'); assert.match(await page.locator('#sections').innerText(), /지역 중소기업/);
   await page.setInputFiles('#file', { name: '50pages.pdf', mimeType: 'application/pdf', buffer: pdfFixture(50) }); await page.click('#summarize');
   await page.waitForSelector('#results:not([hidden])'); assert.match(await page.locator('#result-meta').innerText(), /50쪽/);
-  await page.setInputFiles('#file', { name: '51pages.pdf', mimeType: 'application/pdf', buffer: pdfFixture(51) }); await page.click('#summarize');
-  await page.waitForSelector('#error:not([hidden])'); assert.match(await page.locator('#error').innerText(), /51쪽/); assert.equal(await page.locator('#results').isVisible(), false);
+  await page.setInputFiles('#file', { name: '484pages.pdf', mimeType: 'application/pdf', buffer: pdfFixture(484) });
+  await page.fill('#pdf-start','480'); await page.check('#pdf-fast'); await page.click('#summarize');
+  await page.waitForSelector('#results:not([hidden])');
+  assert.match(await page.locator('#warnings').innerText(), /484쪽 중 원본 480–484쪽/);
+  await page.locator('.source-panel summary').click();
+  await page.waitForSelector("#source .evidence");
+  const excerpt = await page.locator('#source').innerText();
+  assert.match(excerpt,/Page 484:/); assert.doesNotMatch(excerpt,/Page 479:/);
+  await page.fill('#pdf-start','400'); await page.fill('#pdf-end','484'); await page.click('#summarize');
+  await page.waitForSelector("#error:not([hidden])");
+  assert.match(await page.locator('#error').innerText(), /1~50쪽/);
   await page.setInputFiles('#file', { name: 'mixed.pdf', mimeType: 'application/pdf', buffer: pdfFixture(2, [2]) }); await page.click('#summarize');
   await page.waitForSelector('#results:not([hidden])'); assert.match(await page.locator('#warnings').innerText(), /읽지 못한 쪽: 2/);
   const sheet = await browser.newPage();
@@ -70,7 +78,7 @@ try {
   await page.waitForSelector('#source .evidence');
   const multiText = await page.locator('#source').innerText();
   const order = [1,2,3,4,5].map(n => multiText.search(new RegExp(`PAGE\\s*${n}\\b`)));
-  assert.ok(order.every((v,i)=>v>=0 && (i===0 || v>order[i-1])), 'OCR pages out of order: '+order);
+  assert.ok(order.every((v,i)=>v>=0 && (i===0 || v>order[i-1])), 'OCR pages out of order: '+multiText);
   for (const [i, el] of (await page.locator('#source .location').allInnerTexts()).entries()) assert.match(el, new RegExp(`· b${i+1}$`));
   // Enough native text: OCR reads only the large image and does not duplicate the page text.
   const mixed = await browser.newPage();
@@ -98,5 +106,5 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: '/private/tmp/actiondoc-web-mobile.png', fullPage: true });
   assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(postRequests, []);
-  console.log('PASS: text/HTML/HWP/PDF, 50/51 pages, mixed PDF warning, image-region OCR, parallel OCR page order, OCR cancel, evidence export, no script execution or external requests, mobile layout');
+  console.log('PASS: text/HTML/HWP/PDF, 50 pages and selected pages of a 484-page PDF, mixed PDF warning, image-region OCR, parallel OCR page order, OCR cancel, evidence export, no script execution or external requests, mobile layout');
 } finally { if (browser) await browser.close(); server.kill(); }

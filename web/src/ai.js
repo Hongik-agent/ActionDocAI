@@ -70,7 +70,7 @@ async function run() {
     const {data:{session}}=await client.auth.getSession();
     if(!session) throw Error('login');
     const response=await fetch('/api/summary',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},
-      body:JSON.stringify({blocks:doc.blocks.map(({text,page})=>({text,page})),purpose,pages:doc.pages,consent:'public-document-v1'})});
+      body:JSON.stringify({blocks:doc.blocks.map(({text,page})=>({text,page:page - ((doc.startPage ?? 1) - 1)})),purpose,pages:doc.pages,consent:'public-document-v1'})});
     const data=await response.json();
     if(job!==current)return;
     if(!['complete','cached'].includes(data.status))throw Error(data.status);

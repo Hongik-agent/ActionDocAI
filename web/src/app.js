@@ -16,10 +16,13 @@ function choose(file) {
   if (busy || !file) return;
   if (file.size > 50 * 1024 * 1024) { error('파일은 50MB까지 지원합니다.'); return; }
   if (!/\.(pdf|hwp|html?|txt|md)$/i.test(file.name)) { error('PDF·HWP·HTML·TXT·MD 파일을 선택해 주세요. HWPX는 지원하지 않습니다.'); return; }
-  selected = file; invalidate(); $('file-label').textContent = file.name; $('remove-file').hidden = false;
+  selected = file; invalidate();
+  $('pdf-options').hidden = !/\.pdf$/i.test(file.name);
+  $('pdf-start').value = '1'; $('pdf-end').value = ''; $('pdf-fast').checked = false;
+  $('file-label').textContent = file.name; $('remove-file').hidden = false;
 }
 function setBusy(value) {
-  busy = value;
+  busy = value; $('pdf-options').disabled = value;
   for (const id of ['summarize', 'file', 'file-tab', 'text-tab', 'document-text', 'purpose', 'sample', 'hero-sample', 'remove-file']) $(id).disabled = value;
   $('summarize').textContent = value ? '문서를 읽고 있어요…' : '문서 정리하기 →'; $('cancel').hidden = !value;
 }
@@ -49,8 +52,9 @@ function render(doc) {
   $('results').hidden = false; $('results').focus({ preventScroll: true }); $('results').scrollIntoView({ behavior: 'smooth' });
 }
 $('file-tab').onclick = () => setMode('file'); $('text-tab').onclick = () => setMode('text');
+$('pdf-options').oninput = invalidate;
 $('file').onchange = event => choose(event.target.files[0]);
-$('remove-file').onclick = () => { selected = null; $('file').value = ''; $('file-label').textContent = '파일을 선택하거나 여기에 놓으세요'; $('remove-file').hidden = true; invalidate(); };
+$('remove-file').onclick = () => { selected = null; $('pdf-options').hidden = true; $('file').value = ''; $('file-label').textContent = '파일을 선택하거나 여기에 놓으세요'; $('remove-file').hidden = true; invalidate(); };
 $('document-text').oninput = () => { invalidate(); $('char-count').textContent = `${$('document-text').value.length.toLocaleString()} / 160,000자`; };
 function showDocument(doc) {
   resetAi(doc, $('purpose').value); report = summarize(doc, $('purpose').value); render(doc);
@@ -72,7 +76,11 @@ $('summarize').onclick = async () => {
   setBusy(true); $('progress').textContent = '본문과 원문 위치를 읽고 있어요…';
   try {
     reading = new AbortController();
-    const doc = mode === 'file' ? await readFile(selected, value => { $('progress').textContent = value; }, reading.signal) : validateDocument({ name: '붙여넣은 안내문', pages: 0, blocks: blocksFromText($('document-text').value), warnings: [] });
+    const doc = mode === 'file' ? await readFile(selected, value => { $('progress').textContent = value; }, reading.signal, {
+      start: $('pdf-start').valueAsNumber,
+      end: $('pdf-end').value || $('pdf-end').validity.badInput ? $('pdf-end').valueAsNumber : null,
+      fast: $('pdf-fast').checked
+    }) : validateDocument({ name: '붙여넣은 안내문', pages: 0, blocks: blocksFromText($('document-text').value), warnings: [] });
     showDocument(doc); $('progress').textContent = '정리 완료 · 문서를 서버로 전송하지 않았습니다.';
   } catch (reason) { error(reason.message || '문서를 읽지 못했습니다. 형식과 손상 여부를 확인해 주세요.'); $('progress').textContent = ''; }
   finally { setBusy(false); }
