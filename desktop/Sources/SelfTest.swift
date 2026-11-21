@@ -59,6 +59,13 @@ import SQLite3
         let forged=ActionRoute(id:"link",kind:"WEB",title:"source",url:"https://other.example.org/",displayAddress:"https://example.org",hint:"",navigation:"",status:"AVAILABLE",applicationEndsOn:nil,evidence:linked.evidence)
         try require(!forged.isSourceBacked(by:sourceDoc),"Destination not matching its source was accepted")
         print("PASS: source route URL validation, dynamic expiry and older report compatibility")
+        let ev=Evidence(blockId:"b1",page:1,quote:"근거 문장");let evBody=Evidence(blockId:"b2",page:0,quote:"본문 문장")
+        let mdReport=AnalysisReport(id:"md",documentId:document.id,title:"저장 결과",mode:"ai",decision:"REVIEW_TASKS",findings:[finding],questions:[],warnings:["주의 예시"],chunks:1,createdAt:"2026-10-31T00:00:00Z",documentType:"NOTICE",overview:"개요 예시",sections:[ReportSection(id:"s1",title:"첫 섹션",body:"첫 본문",evidence:[ev],aiRefined:false),ReportSection(id:"s2",title:"둘째 섹션",body:"둘째 본문",evidence:[evBody],aiRefined:false)],periodStatus:"UNKNOWN",personalChecks:[PersonalCheck(id:"p1",criterion:"조건 예시",status:"MATCH",reason:"이유 예시",profileQuote:"",evidence:[])],facts:[],stages:[])
+        let md=mdReport.markdown(document:document)
+        for part in ["# 저장 결과","## 첫 섹션","> 원문 근거 (1페이지 · b1): 근거 문장","> 원문 근거 (본문 · b2): 본문 문장","## 내 상황과 비교","## 할 일","## 원문\n\n"+document.markdown] {try require(md.contains(part),"Markdown is missing: \(part)")}
+        var bare=try JSONSerialization.jsonObject(with:JSONEncoder().encode(report)) as! [String:Any];for k in ["actionRoutes","facts","personalChecks"]{bare.removeValue(forKey:k)}
+        let bareReport=try JSONDecoder().decode(AnalysisReport.self,from:JSONSerialization.data(withJSONObject:bare));try require(!bareReport.markdown(document:document).isEmpty,"Older record markdown is empty")
+        print("PASS: markdown export includes report, evidence, personal checks, tasks and source text")
 
     }
 }

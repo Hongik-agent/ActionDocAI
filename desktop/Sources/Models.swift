@@ -100,3 +100,18 @@ let sampleNotice = """
 가입 기간 24개월 이상이면 월 3,300원의 할인을 받을 수 있습니다.
 신청서를 제출하지 않으면 할인이 적용되지 않아 기본 요금이 청구됩니다.
 """
+extension AnalysisReport {
+    func markdown(document:SourceDocument)->String {
+        let quote={(e:Evidence)->String in "> 원문 근거 (\(SourceLocation.page(e.page)) · \(e.blockId)): \(e.quote)"}
+        let status=["MATCH":"조건 일치","MISMATCH":"조건 불일치","UNKNOWN":"추가 확인","IRRELEVANT":"관련 조건 없음"]
+        var out=["# \(title)"]
+        if let overview,!overview.isEmpty{out.append(overview)}
+        out+=warnings.map{"주의: \($0)"}
+        if let checks=personalChecks,!checks.isEmpty{out.append("## 내 상황과 비교");out+=checks.map{"- \($0.criterion) (\(status[$0.status] ?? "추가 확인")): \($0.reason)"}}
+        for s in sections ?? []{out.append("## \(s.title)");out.append(s.body);out+=s.evidence.map(quote)}
+        let actions=findings.filter{$0.category=="action"}
+        if !actions.isEmpty{out.append("## 할 일");out+=actions.map{"- \($0.title)"+($0.date.map{" (\($0))"} ?? "")+": \($0.detail)"}}
+        out.append("## 원문\n\n"+document.markdown)
+        return out.joined(separator:"\n\n")+"\n"
+    }
+}

@@ -104,5 +104,5 @@ import UniformTypeIdentifiers
         let value=route.kind=="WEB" ? route.url:route.kind=="PHONE" ? String(route.url.dropFirst(4)):route.displayAddress
         NSPasteboard.general.clearContents();NSPasteboard.general.setString(value,forType:.string);notice="연결 주소를 복사했습니다."
     }
-    func saveMarkdown(){guard let document else{return};let p=NSSavePanel();p.nameFieldStringValue="안내문.md";p.allowedContentTypes=[UTType(filenameExtension:"md") ?? .plainText];if p.runModal() == .OK,let url=p.url{do{try document.markdown.write(to:url,atomically:true,encoding:.utf8)}catch{self.error=error.localizedDescription}}}
+    func saveMarkdown(){guard let document else{return};let p=NSSavePanel();p.nameFieldStringValue="ActionDoc-정리.md";p.allowedContentTypes=[UTType(filenameExtension:"md") ?? .plainText];if p.runModal() == .OK,let url=p.url{do{try (report?.markdown(document:document) ?? document.markdown).write(to:url,atomically:true,encoding:.utf8)}catch{self.error=error.localizedDescription}}}
 }
