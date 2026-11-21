@@ -126,6 +126,8 @@ try {
   await visitor.route('**/api/config', route => route.fulfill({ json: { enabled: true, provider: 'Google Gemini', url: 'https://example.supabase.co', publicKey: 'public-anon-key' } }));
   await visitor.goto('http://127.0.0.1:4184/');
   await visitor.waitForSelector('#ai-direct:not([hidden])');
+  // The top button is the only way to start an AI summary; the panel below only signs in, asks consent and shows results.
+  assert.equal(await visitor.locator('#ai-panel button.primary').count(), 0);
   await visitor.getByRole('tab', { name: '텍스트 붙여넣기' }).click();
   await visitor.fill('#document-text', '지원 대상: 지역 중소기업\n신청 기한: 2027년 3월 20일까지');
   await visitor.click('#ai-direct');

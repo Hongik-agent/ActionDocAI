@@ -23,12 +23,14 @@ const KIND_TITLES={overview:'한눈에 보기',action:'해야 할 일'};
 // Saving and copying read as one list: the glance and the to-dos first, then the detailed sections.
 const exportItems=items=>['overview','action','detail'].flatMap(kind=>items.filter(i=>(i.kind??'detail')===kind).map(i=>({...i,section:KIND_TITLES[kind]??i.section})));
 const tooLarge=doc=>doc.pages>10||doc.characters>10000;
+// Says what to change, not only that the document is too long.
+const limitMessage=doc=>doc.pages>10?`이 PDF는 ${doc.pages}쪽입니다. AI 요약은 10쪽까지 지원하므로 위의 ‘PDF 정리 범위’에서 10쪽 이내로 지정해 주세요.`:
+  `본문이 ${doc.characters.toLocaleString()}자로 AI 요약 한도(10,000자)를 넘습니다. 필요한 부분만 붙여넣거나 PDF 정리 범위를 줄여 주세요.`;
 // Verified items of the current document only; reset with it.
 export const aiItems=()=>exportItems(current?.items??[]);
 export function resetAi(doc=null,purpose=null) {
   current=doc?{doc,purpose}:null; pending=false;
   $('ai-output').replaceChildren(); $('ai-consent').checked=false; $('ai-status').textContent='';
-  $('ai-run').disabled=running||!doc; $('ai-hint').hidden=!!doc;
 }
 // One block per section the model chose, in the model's order; shared by real results and the sample example.
 export function aiNodes(items) {
@@ -72,7 +74,7 @@ export function promptLogin() {
 // Called after the document is read: runs at once if consent is given, otherwise starts as soon as it is ticked.
 export function requestAi() {
   if(!current) return;
-  if(tooLarge(current.doc)){$('ai-status').textContent=messages.length+' 기본 정리를 확인해 주세요.';$('ai-panel').scrollIntoView({behavior:'smooth',block:'center'});return;}
+  if(tooLarge(current.doc)){$('ai-status').textContent=limitMessage(current.doc);$('ai-panel').scrollIntoView({behavior:'smooth',block:'center'});return;}
   if($('ai-consent').checked) return run();
   pending=true;$('ai-status').textContent='아래 동의 항목에 체크하면 바로 AI 요약을 시작합니다.';
   $('ai-panel').scrollIntoView({behavior:'smooth',block:'center'});$('ai-consent').focus({preventScroll:true});
@@ -90,7 +92,7 @@ export async function initializeAi() {
       $('ai-delete').hidden=!session;
       if (_event==='SIGNED_OUT') resetAi();
       $('ai-login').hidden=!!session; $('ai-login-note').hidden=!!session||!config.enabled; $('ai-controls').hidden=!session||!config.enabled; $('ai-logout').hidden=!session;
-      $('ai-available').textContent=!config.enabled?'AI 요약은 현재 이용할 수 없습니다. 기존 계정은 로그인 후 삭제할 수 있습니다.':session?'문서를 먼저 정리한 뒤 AI 요약을 실행하세요.':'무료 AI 요약은 Google 로그인 후 사용할 수 있습니다. 로그인 후 문서를 선택해 주세요.';
+      $('ai-available').textContent=!config.enabled?'AI 요약은 현재 이용할 수 없습니다. 기존 계정은 로그인 후 삭제할 수 있습니다.':session?'문서를 선택한 뒤 위의 ‘AI로 요약하기’를 누르세요. 요약 결과는 이곳에 표시됩니다.':'무료 AI 요약은 Google 로그인 후 사용할 수 있습니다. 로그인 후 문서를 선택해 주세요.';
     });
     $('ai-login').onclick=async()=>{
       const {error}=await client.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin}});
@@ -107,7 +109,6 @@ export async function initializeAi() {
       } catch { $('ai-status').textContent='탈퇴 완료를 확인하지 못했습니다. 다시 로그인해 확인해 주세요.'; }
       finally { $('ai-delete').disabled=false; }
     };
-    $('ai-run').onclick=run;
     $('ai-consent').onchange=()=>{if(pending&&$('ai-consent').checked){pending=false;run();}};
     $('ai-direct').hidden=!config.enabled;
   } catch { /* Local basic summary remains available. */ }
@@ -115,9 +116,9 @@ export async function initializeAi() {
 async function run() {
   if(!current||running)return;
   const job=current, {doc,purpose}=job;
-  if(tooLarge(doc)){$('ai-status').textContent=messages.length+' 기본 정리를 확인해 주세요.';return;}
+  if(tooLarge(doc)){$('ai-status').textContent=limitMessage(doc);return;}
   if(!$('ai-consent').checked){$('ai-status').textContent='본문 전송과 요약 저장에 동의해 주세요.';return;}
-  running=true;$('ai-run').disabled=true;
+  running=true;$('ai-direct').disabled=true;
   $('ai-status').textContent='AI가 요약하고 원문을 대조하고 있습니다…';
   try {
     const {data:{session}}=await client.auth.getSession();
@@ -131,5 +132,5 @@ async function run() {
     $('ai-output').replaceChildren(copyControl(()=>aiText(exportItems(job.items)),'AI 전체 복사','AI 상세 요약 전체 복사'),...aiView(job.items));
     $('ai-status').textContent=data.status==='cached'?'저장된 요약을 다시 표시했습니다. 무료 횟수는 차감되지 않습니다.':'AI 요약 완료 · 금액과 기한은 인용된 근거와 함께 확인해 주세요.';
   } catch(e) {if(job===current)$('ai-status').textContent=(messages[e.message]||messages.unavailable)+' 기본 정리를 확인해 주세요.';}
-  finally {running=false;$('ai-run').disabled=!current;}
+  finally {running=false;$('ai-direct').disabled=false;}
 }

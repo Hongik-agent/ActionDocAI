@@ -4,9 +4,10 @@ import { SAMPLE_TEXT, SAMPLE_AI } from './sample.js';
 import { PURPOSES, blocksFromText, validateDocument, summarize, location, reportMarkdown } from './summary.js';
 import { readFile } from './read.js';
 const $ = id => document.getElementById(id);
-let mode = 'file', selected = null, busy = false, report = null, reading = null;
+// reusable: the shown results come from the current input (not the sample), so AI can use them without reading again.
+let mode = 'file', selected = null, busy = false, report = null, reading = null, reusable = false;
 function node(tag, cls, text) { const el = document.createElement(tag); if (cls) el.className = cls; if (text !== undefined) el.textContent = text; return el; }
-function invalidate() { resetAi(); report = null; $('results').hidden = true; $('ai-example').hidden = true; $('error').hidden = true; }
+function invalidate() { resetAi(); report = null; reusable = false; $('results').hidden = true; $('ai-example').hidden = true; $('error').hidden = true; }
 function error(message) { $('error').textContent = message; $('error').hidden = false; }
 function setMode(value) {
   if (busy) return; mode = value; invalidate();
@@ -84,16 +85,19 @@ async function readDocument() {
       end: $('pdf-end').value || $('pdf-end').validity.badInput ? $('pdf-end').valueAsNumber : null,
       fast: $('pdf-fast').checked
     }) : validateDocument({ name: '붙여넣은 안내문', pages: 0, blocks: blocksFromText($('document-text').value), warnings: [] });
-    showDocument(doc); $('progress').textContent = '정리 완료 · 문서를 서버로 전송하지 않았습니다.';
+    showDocument(doc); reusable = true; $('progress').textContent = '정리 완료 · 문서를 서버로 전송하지 않았습니다.';
     return doc;
   } catch (reason) { error(reason.message || '문서를 읽지 못했습니다. 형식과 손상 여부를 확인해 주세요.'); $('progress').textContent = ''; return null; }
   finally { setBusy(false); }
 }
 $('summarize').onclick = async () => { if (busy) return; invalidate(); await readDocument(); };
-// One click: check sign-in first so nothing is read in vain, then read the document and hand it to the AI summary.
+// The only AI entry point: check sign-in first so nothing is read in vain, reuse a document already read from the
+// current input, otherwise read it, then hand it to the AI summary.
 $('ai-direct').onclick = async () => {
-  if (busy) return; invalidate();
+  if (busy) return;
   if (!(await aiSignedIn())) { promptLogin(); return; }
+  if (reusable) { requestAi(); return; }
+  invalidate();
   if (await readDocument()) requestAi();
 };
 $('cancel').onclick = () => reading?.abort(new Error('문서 읽기를 취소했습니다.'));
