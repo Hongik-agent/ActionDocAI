@@ -21,6 +21,12 @@ public class OcrService {
         return "";
     }
     public boolean available() { return !command.isBlank() && Files.isExecutable(Path.of(command)); }
+    /** Figures may hold no text, so callers decide whether an unreadable result fails the page. */
+    static boolean readable(Result result) { return !result.text().isBlank() && Double.isFinite(result.confidence()) && result.confidence()>=0.35; }
+    static Result requireReadable(Result result,int page) {
+        if(!readable(result))throw new IllegalArgumentException(page+"페이지를 자동 OCR로 처리했지만 읽을 수 있는 텍스트를 확보하지 못했습니다. 원본의 방향·해상도를 확인해 주세요. 이 페이지를 제외한 분석은 확정하지 않았습니다.");
+        return result;
+    }
     public Result recognize(BufferedImage image,int page) {
         if(!available())throw new IllegalArgumentException(page+"페이지에 OCR이 필요합니다. 자동 문자 인식 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.");
         Path directory=null;Process process=null;
@@ -34,7 +40,6 @@ public class OcrService {
             JsonNode result=new ObjectMapper().readTree(output.toFile());
             if(!result.path("text").isTextual() || !result.path("confidence").isNumber())throw new IOException("Invalid OCR response");
             String text=result.path("text").asText();double confidence=result.path("confidence").asDouble();
-            if(text.isBlank() || !Double.isFinite(confidence) || confidence<0.35)throw new IllegalArgumentException(page+"페이지를 자동 OCR로 처리했지만 읽을 수 있는 텍스트를 확보하지 못했습니다. 원본의 방향·해상도를 확인해 주세요. 이 페이지를 제외한 분석은 확정하지 않았습니다.");
             return new Result(text,confidence,result.path("lowConfidenceLines").asInt(0));
         } catch(IllegalArgumentException e){throw e;}
         catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalArgumentException("OCR이 중단되었습니다. 다시 시도해 주세요.");}

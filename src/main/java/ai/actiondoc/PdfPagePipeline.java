@@ -7,8 +7,6 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
 import org.apache.pdfbox.pdmodel.*;
-import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
-import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.rendering.*;
 
 /** PDFBox stays on the caller thread; only detached page images enter the OCR workers. */
@@ -33,8 +31,12 @@ final class PdfPagePipeline {
                 String text=PdfLines.join(LayoutTextStripper.lines(pdf,number));
                 PDPage page=pdf.getPage(number-1);
                 List<String> links=links(page);
-                boolean needsOcr=text.isBlank() || hasLargeImage(page.getResources(),0);
-                if(!needsOcr) {
+                var images=ImageRegions.find(page);
+                // Under 40 characters is less than a sentence, so the page's content must be in its image layer.
+                boolean scanned=text.isBlank() || text.replaceAll("\\s","").length()<40 && !images.isEmpty();
+                // Images under 250,000 pixels (about 500×500) are logos and icons rather than text-bearing figures.
+                var figures=scanned ? List.<ImageRegions.Region>of() : images.stream().filter(region->region.pixels()>=250_000).toList();
+                if(!scanned && figures.isEmpty()) {
                     pending.add(CompletableFuture.completedFuture(new Page(number,text,links,null,false)));
                     continue;
                 }
@@ -47,8 +49,18 @@ final class PdfPagePipeline {
                     pending.add(CompletableFuture.completedFuture(new Page(number,text,links,null,true)));
                 } else {
                     int originalPage=number;
+                    var crops=new ArrayList<BufferedImage>();
+                    for(var figure:figures)crops.add(ImageRegions.crop(image,page,figure,scale));
                     pending.add(workers.submit(()->{
-                        try{return new Page(originalPage,text,links,ocr.recognize(image,originalPage),false);}
+                        try{
+                            if(scanned)return new Page(originalPage,text,links,OcrService.requireReadable(ocr.recognize(image,originalPage),originalPage),false);
+                            OcrService.Result merged=null;
+                            for(var crop:crops) {
+                                var found=ocr.recognize(crop,originalPage);
+                                if(OcrService.readable(found))merged=merged==null ? found:new OcrService.Result(merged.text()+"\n"+found.text(),Math.min(merged.confidence(),found.confidence()),merged.lowConfidenceLines()+found.lowConfidenceLines());
+                            }
+                            return new Page(originalPage,text,links,merged,false);
+                        }
                         finally{image.flush();}
                     }));
                 }
@@ -90,15 +102,6 @@ final class PdfPagePipeline {
             }
         }
         return List.copyOf(result);
-    }
-    private static boolean hasLargeImage(PDResources resources,int depth) throws IOException {
-        if(resources==null || depth>8)return false;
-        for(var name:resources.getXObjectNames()) {
-            var object=resources.getXObject(name);
-            if(object instanceof PDImageXObject image && (long)image.getWidth()*image.getHeight()>=250000)return true;
-            if(object instanceof PDFormXObject form && hasLargeImage(form.getResources(),depth+1))return true;
-        }
-        return false;
     }
     private static boolean isBlank(BufferedImage image) {
         long dark=0,limit=Math.max(10,(long)image.getWidth()*image.getHeight()/100000);
