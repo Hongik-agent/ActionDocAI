@@ -61,7 +61,7 @@ test('API retries inside one reservation and returns safe provider error codes',
       assert.equal(target.origin,'https://generativelanguage.googleapis.com');
       generations++;
       if(!succeeds || generations===1)return new Response('private detail',{status:503});
-      return reply(generations===2?{items:[{statement:text,indexes:[0]}]}:{supported:true});
+      return reply(generations===2?{items:[{section:'개요',statement:text,indexes:[0]}]}:{unsupported:[]});
     });
     let body,status=200;
     await summary({method:'POST',headers:{authorization:'Bearer test-user-token'},body:{blocks:[{text,page:0}],purpose:'GENERAL',pages:0,consent:'public-document-v1'}},

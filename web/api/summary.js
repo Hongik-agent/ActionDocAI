@@ -27,7 +27,7 @@ export default async function summary(req,res) {
     const model = gemini ? process.env.GEMINI_MODEL || defaultGeminiModel : process.env.OPENAI_MODEL || 'gpt-4.1-mini';
     if(!gemini && !process.env.OPENAI_API_KEY) throw Error('configuration');
     const source=blocks.map(({text,page})=>({text,page}));
-    const f=createHash('sha256').update(JSON.stringify([4,gemini ? 'gemini' : 'openai',model,purpose,pages,source])).digest('hex');
+    const f=createHash('sha256').update(JSON.stringify([5,gemini ? 'gemini' : 'openai',model,purpose,pages,source])).digest('hex');
     const limit=(key,fallback)=>{const n=Number(process.env[key]??fallback);if(!Number.isSafeInteger(n)||n<0||n>100000) throw Error('limit');return n;};
     const reservation=await db.rpc('actiondoc_reserve',{u:user.id,f,personal:limit('USER_DAILY_LIMIT',3),total:limit('GLOBAL_DAILY_LIMIT',30)});
     if(reservation.error) throw Error('quota');

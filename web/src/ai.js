@@ -73,14 +73,16 @@ async function run() {
     const data=await response.json();
     if(job!==current)return;
     if(!['complete','cached'].includes(data.status))throw Error(data.status);
-    $('ai-output').replaceChildren();
-    for(const item of data.items){
-      const article=document.createElement('article'), p=document.createElement('p'), details=document.createElement('details'), summary=document.createElement('summary');
-      const cited=item.indexes.map(i=>doc.blocks[i]);
-      p.textContent=item.statement;summary.textContent='원문 근거 · '+cited.map(location).join(', ');
-      details.append(summary,...cited.map(block=>Object.assign(document.createElement('blockquote'),{textContent:block.text})));article.append(p,details);$('ai-output').append(article);
+    job.items=data.items.map(({section,statement,indexes})=>({section,statement,blocks:indexes.map(i=>doc.blocks[i])}));
+    // Items keep the model's order; each section the model chose becomes one heading.
+    const groups=new Map();
+    for(const item of job.items){
+      if(!groups.has(item.section)){const group=document.createElement('section');if(item.section)group.append(Object.assign(document.createElement('h3'),{textContent:item.section}));groups.set(item.section,group);}
+      const article=document.createElement('article'), details=document.createElement('details');
+      details.append(Object.assign(document.createElement('summary'),{textContent:'원문 근거 · '+item.blocks.map(location).join(', ')}),...item.blocks.map(block=>Object.assign(document.createElement('blockquote'),{textContent:block.text})));
+      article.append(Object.assign(document.createElement('p'),{textContent:item.statement}),details);groups.get(item.section).append(article);
     }
-    job.items=data.items.map(({statement,indexes})=>({statement,blocks:indexes.map(i=>doc.blocks[i])}));
+    $('ai-output').replaceChildren(...groups.values());
     $('ai-status').textContent=data.status==='cached'?'저장된 요약을 다시 표시했습니다. 무료 횟수는 차감되지 않습니다.':'AI 요약 완료 · 금액과 기한은 인용된 근거와 함께 확인해 주세요.';
   } catch(e) {if(job===current)$('ai-status').textContent=(messages[e.message]||messages.unavailable)+' 기본 정리를 확인해 주세요.';}
   finally {running=false;$('ai-run').disabled=!current;}

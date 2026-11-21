@@ -48,6 +48,9 @@ test('saved report includes verified AI items with their evidence only when pres
   const markdown = reportMarkdown(report, [{ statement: '교육비 50,000원을 지원합니다.', blocks: [source.blocks[1], source.blocks[2]] }]);
   assert.ok(markdown.indexOf('AI 상세 요약') < markdown.indexOf('무료 기본 정리'));
   assert.ok(markdown.includes(`- 교육비 50,000원을 지원합니다.\n  > 원문 근거 (본문 · b2): ${source.blocks[1].text}\n  > 원문 근거 (본문 · b3): ${source.blocks[2].text}`));
+  // Items the model filed under the same section stay together even when they arrive apart.
+  const grouped = reportMarkdown(report, [{ section: '지원 내용', statement: 'A', blocks: [source.blocks[1]] }, { section: '일정', statement: 'B', blocks: [source.blocks[2]] }, { section: '지원 내용', statement: 'C', blocks: [source.blocks[1]] }]);
+  assert.ok(/### 지원 내용\n\n- A[\s\S]*- C[\s\S]*### 일정\n\n- B/.test(grouped));
 });
 test('PDF text keeps real word gaps, rejoins wrapped lines and keeps list items apart', () => {
   // One run per glyph group, positioned like pdf.js text content (font size 10, x/width in page units).
